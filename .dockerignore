@@ -1,8 +1,15 @@
 **/bin/
 **/obj/
+TestResults/
+coverage/
+coverage.*/
 .git/
+.github/
 .idea/
 .vs/
+.env
+.env.*
+deploy/
 Dockerfile*
 docker-compose*.yml
 README.md

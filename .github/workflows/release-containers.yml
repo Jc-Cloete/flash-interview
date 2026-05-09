@@ -1,0 +1,182 @@
+name: Release Containers
+
+on:
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing or new GitHub Release tag to publish assets against
+        required: true
+        type: string
+
+concurrency:
+  group: release-containers-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  DOTNET_VERSION: 10.0.x
+  REGISTRY: ghcr.io
+
+jobs:
+  publish:
+    name: Build and publish release images
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore
+        run: dotnet restore FlashInterview.slnx
+
+      - name: Build
+        run: dotnet build FlashInterview.slnx --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test FlashInterview.slnx --configuration Release --no-build
+
+      - name: Resolve release metadata
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="${{ github.event.release.tag_name || inputs.tag }}"
+          owner_lc="${GITHUB_REPOSITORY_OWNER,,}"
+          repo_name="${GITHUB_REPOSITORY#*/}"
+          repo_lc="${repo_name,,}"
+          image_prefix="${REGISTRY}/${owner_lc}/${repo_lc}"
+
+          {
+            echo "version=${version}"
+            echo "api_image=${image_prefix}-api"
+            echo "web_image=${image_prefix}-web"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Ensure GitHub Release exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          if ! gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release create "${RELEASE_TAG}" \
+              --title "Flash Interview ${RELEASE_TAG}" \
+              --notes "Container release for ${GITHUB_SHA}."
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Build and push API image
+        id: build-api
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: src/FlashInterview.Api/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.release.outputs.api_image }}:${{ steps.release.outputs.version }}
+            ${{ steps.release.outputs.api_image }}:sha-${{ github.sha }}
+            ${{ steps.release.outputs.api_image }}:latest
+          labels: |
+            org.opencontainers.image.title=Flash Interview API
+            org.opencontainers.image.description=Flash Interview REST API
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.release.outputs.version }}
+
+      - name: Build and push Web image
+        id: build-web
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: src/FlashInterview.Web/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.release.outputs.web_image }}:${{ steps.release.outputs.version }}
+            ${{ steps.release.outputs.web_image }}:sha-${{ github.sha }}
+            ${{ steps.release.outputs.web_image }}:latest
+          labels: |
+            org.opencontainers.image.title=Flash Interview Web
+            org.opencontainers.image.description=Flash Interview ASP.NET Core MVC frontend
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.release.outputs.version }}
+
+      - name: Build Docker image archives for GitHub Release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p release-assets
+
+          docker buildx build \
+            --file src/FlashInterview.Api/Dockerfile \
+            --tag flash-interview-api:${{ steps.release.outputs.version }} \
+            --output type=docker,dest=release-assets/flash-interview-api-${{ steps.release.outputs.version }}.tar \
+            .
+          gzip -9 release-assets/flash-interview-api-${{ steps.release.outputs.version }}.tar
+
+          docker buildx build \
+            --file src/FlashInterview.Web/Dockerfile \
+            --tag flash-interview-web:${{ steps.release.outputs.version }} \
+            --output type=docker,dest=release-assets/flash-interview-web-${{ steps.release.outputs.version }}.tar \
+            .
+          gzip -9 release-assets/flash-interview-web-${{ steps.release.outputs.version }}.tar
+
+      - name: Prepare release bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p release-bundle
+          cp deploy/docker-compose.release.yml release-bundle/docker-compose.yml
+          cp deploy/release.env.example release-bundle/.env.example
+
+          cat > release-bundle/images.txt <<EOF
+          Version: ${{ steps.release.outputs.version }}
+          Source: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
+
+          API image: ${{ steps.release.outputs.api_image }}:${{ steps.release.outputs.version }}
+          API digest: ${{ steps.build-api.outputs.digest }}
+
+          Web image: ${{ steps.release.outputs.web_image }}:${{ steps.release.outputs.version }}
+          Web digest: ${{ steps.build-web.outputs.digest }}
+          EOF
+
+          cat > release-bundle/.env.pinned <<EOF
+          MSSQL_SA_PASSWORD=replace-with-a-real-secret
+          DATABASE_ENSURE_CREATED_ON_STARTUP=false
+          FLASH_INTERVIEW_API_IMAGE=${{ steps.release.outputs.api_image }}@${{ steps.build-api.outputs.digest }}
+          FLASH_INTERVIEW_WEB_IMAGE=${{ steps.release.outputs.web_image }}@${{ steps.build-web.outputs.digest }}
+          EOF
+
+          tar -czf release-assets/flash-interview-${{ steps.release.outputs.version }}-deployment-bundle.tar.gz -C release-bundle .
+          (cd release-assets && sha256sum ./* > SHA256SUMS)
+
+      - name: Upload assets to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.version }}
+        run: gh release upload "${RELEASE_TAG}" release-assets/* --clobber

@@ -27,6 +27,8 @@ src/FlashInterview.Infrastructure   EF Core SQL Server persistence
 src/FlashInterview.Api              REST API, Swagger, Serilog, health
 src/FlashInterview.Web              MVC frontend using API HttpClient
 tests/FlashInterview.Tests          xUnit tests
+.github/workflows                   PR checks and release container publishing
+deploy                              Release compose template and env example
 ```
 
 ## Verification Commands
@@ -56,3 +58,5 @@ docker compose -f docker-compose.dev.yml up --build
 - Keep Serilog request logs structured with application identity, method, path, status, and elapsed time; keep EF Core command noise at `Warning` in development/container settings.
 - Preserve global exception handlers that log unexpected failures server-side without returning stack traces to API or MVC clients.
 - Avoid adding a direct database dependency to `FlashInterview.Web`.
+- Keep PR workflows non-publishing; publishing permissions belong only in release workflows.
+- Release assets should include enough deployment metadata to run published GHCR images without rebuilding from source.

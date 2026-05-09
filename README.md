@@ -83,6 +83,32 @@ export MSSQL_SA_PASSWORD='replace-with-a-real-secret'
 docker compose up --build
 ```
 
+## Release Deployment Bundle
+
+Published GitHub Releases include:
+
+- GHCR images for the API and MVC frontend.
+- Compressed Docker image archives as release assets for offline inspection or loading with `docker load`.
+- A deployment bundle containing `docker-compose.yml`, `.env.example`, `.env.pinned`, image digests, and checksums.
+
+To run a release bundle:
+
+```bash
+tar -xzf flash-interview-<tag>-deployment-bundle.tar.gz
+cp .env.example .env
+# edit .env and set MSSQL_SA_PASSWORD plus the published image tags or pinned digests
+docker compose --env-file .env -f docker-compose.yml up -d
+```
+
+The checked-in release compose template is `deploy/docker-compose.release.yml`. It uses published image references and does not build from local source.
+
+## CI/CD
+
+GitHub Actions workflows live in `.github/workflows/`:
+
+- `pr-checks.yml` runs on pull requests to `main` and pushes to `main`. It restores, builds, and tests the .NET solution, then verifies both production Dockerfiles build without publishing images.
+- `release-containers.yml` runs when a GitHub Release is published or manually through `workflow_dispatch`. It restores/builds/tests, publishes API and Web images to GitHub Container Registry, creates compressed Docker image archives, and uploads release deployment assets.
+
 ## Configuration
 
 API configuration:

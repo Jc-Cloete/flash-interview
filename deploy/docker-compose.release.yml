@@ -1,0 +1,40 @@
+services:
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "${MSSQL_SA_PASSWORD:?set MSSQL_SA_PASSWORD}"
+      MSSQL_PID: "Express"
+    volumes:
+      - mssql-data:/var/opt/mssql
+    restart: unless-stopped
+
+  api:
+    image: "${FLASH_INTERVIEW_API_IMAGE:?set FLASH_INTERVIEW_API_IMAGE}"
+    environment:
+      ASPNETCORE_ENVIRONMENT: "Production"
+      ASPNETCORE_URLS: "http://+:8080"
+      ConnectionStrings__DefaultConnection: "Server=mssql,1433;Database=FlashInterview;User Id=sa;Password=${MSSQL_SA_PASSWORD:?set MSSQL_SA_PASSWORD};TrustServerCertificate=True;"
+      Database__EnsureCreatedOnStartup: "${DATABASE_ENSURE_CREATED_ON_STARTUP:-false}"
+      Database__SeedFile: "docs/sql_sensitive_list.txt"
+    depends_on:
+      - mssql
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+  web:
+    image: "${FLASH_INTERVIEW_WEB_IMAGE:?set FLASH_INTERVIEW_WEB_IMAGE}"
+    environment:
+      ASPNETCORE_ENVIRONMENT: "Production"
+      ASPNETCORE_URLS: "http://+:8080"
+      SensitiveWordsApi__BaseUrl: "http://api:8080/"
+    depends_on:
+      - api
+    ports:
+      - "8081:8080"
+    restart: unless-stopped
+
+volumes:
+  mssql-data:
