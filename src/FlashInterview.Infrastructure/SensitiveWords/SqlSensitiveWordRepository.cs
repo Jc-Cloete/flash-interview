@@ -7,12 +7,18 @@ public sealed class SqlSensitiveWordRepository(FlashInterviewDbContext dbContext
 {
     public async Task<SensitiveWordDto> CreateAsync(CreateSensitiveWordRequest request, CancellationToken cancellationToken)
     {
+        var normalizedValue = SensitiveWordNormalizer.Normalize(request.Value);
+        if (await NormalizedValueExistsAsync(normalizedValue, excludedId: null, cancellationToken))
+        {
+            throw new DuplicateSensitiveWordException(request.Value);
+        }
+
         var now = DateTimeOffset.UtcNow;
         var entity = new SensitiveWordEntity
         {
             Id = Guid.NewGuid(),
             Value = request.Value.Trim(),
-            NormalizedValue = SensitiveWordNormalizer.Normalize(request.Value),
+            NormalizedValue = normalizedValue,
             Category = NormalizeCategory(request.Category),
             IsActive = request.IsActive,
             CreatedAt = now,
@@ -20,7 +26,7 @@ public sealed class SqlSensitiveWordRepository(FlashInterviewDbContext dbContext
         };
 
         dbContext.SensitiveWords.Add(entity);
-        await dbContext.SaveChangesAsync(cancellationToken);
+        await SaveChangesAsync(request.Value, normalizedValue, excludedId: null, cancellationToken);
 
         return Map(entity);
     }
@@ -73,13 +79,19 @@ public sealed class SqlSensitiveWordRepository(FlashInterviewDbContext dbContext
             return null;
         }
 
+        var normalizedValue = SensitiveWordNormalizer.Normalize(request.Value);
+        if (await NormalizedValueExistsAsync(normalizedValue, id, cancellationToken))
+        {
+            throw new DuplicateSensitiveWordException(request.Value);
+        }
+
         entity.Value = request.Value.Trim();
-        entity.NormalizedValue = SensitiveWordNormalizer.Normalize(request.Value);
+        entity.NormalizedValue = normalizedValue;
         entity.Category = NormalizeCategory(request.Category);
         entity.IsActive = request.IsActive;
         entity.UpdatedAt = DateTimeOffset.UtcNow;
 
-        await dbContext.SaveChangesAsync(cancellationToken);
+        await SaveChangesAsync(request.Value, normalizedValue, id, cancellationToken);
 
         return Map(entity);
     }
@@ -110,6 +122,36 @@ public sealed class SqlSensitiveWordRepository(FlashInterviewDbContext dbContext
     private static string? NormalizeCategory(string? category)
     {
         return string.IsNullOrWhiteSpace(category) ? null : category.Trim().ToLowerInvariant();
+    }
+
+    private async Task SaveChangesAsync(
+        string value,
+        string normalizedValue,
+        Guid? excludedId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            if (!await NormalizedValueExistsAsync(normalizedValue, excludedId, cancellationToken))
+            {
+                throw;
+            }
+
+            throw new DuplicateSensitiveWordException(value);
+        }
+    }
+
+    private async Task<bool> NormalizedValueExistsAsync(string normalizedValue, Guid? excludedId, CancellationToken cancellationToken)
+    {
+        return await dbContext.SensitiveWords
+            .AsNoTracking()
+            .AnyAsync(
+                word => word.NormalizedValue == normalizedValue && (excludedId == null || word.Id != excludedId.Value),
+                cancellationToken);
     }
 
     private static SensitiveWordDto Map(SensitiveWordEntity entity)

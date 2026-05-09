@@ -53,6 +53,87 @@ public sealed class ApiSurfaceTests
     }
 
     [Fact]
+    public async Task MaskEndpoint_AllowsEmptyMessage()
+    {
+        using var factory = new FlashInterviewApiFactory(new FakeSensitiveWordRepository());
+        using var client = factory.CreateHttpsClient();
+
+        using var response = await client.PostAsJsonAsync("/api/messages/mask", new MaskMessageRequest(""));
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        var root = document.RootElement;
+
+        Assert.Equal("", root.GetProperty("originalMessage").GetString());
+        Assert.Equal("", root.GetProperty("maskedMessage").GetString());
+        Assert.Empty(root.GetProperty("matches").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task MaskEndpoint_ReturnsBadRequestWhenMessageExceedsMaximumLength()
+    {
+        using var factory = new FlashInterviewApiFactory(new FakeSensitiveWordRepository());
+        using var client = factory.CreateHttpsClient();
+
+        using var response = await client.PostAsJsonAsync("/api/messages/mask", new MaskMessageRequest(new string('a', 10_001)));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        await AssertValidationErrorAsync(response, "Message");
+    }
+
+    [Fact]
+    public async Task SensitiveWordsCreateEndpoint_ReturnsFieldErrorWhenValueIsWhitespace()
+    {
+        using var factory = new FlashInterviewApiFactory(new FakeSensitiveWordRepository());
+        using var client = factory.CreateHttpsClient();
+
+        using var response = await client.PostAsJsonAsync("/api/sensitive-words", new CreateSensitiveWordRequest("   ", "sql"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        await AssertValidationErrorAsync(response, "Value");
+    }
+
+    [Fact]
+    public async Task SensitiveWordsUpdateEndpoint_ReturnsFieldErrorWhenValueIsWhitespace()
+    {
+        using var factory = new FlashInterviewApiFactory(new FakeSensitiveWordRepository());
+        using var client = factory.CreateHttpsClient();
+
+        using var response = await client.PutAsJsonAsync(
+            "/api/sensitive-words/11111111-1111-1111-1111-111111111111",
+            new UpdateSensitiveWordRequest("   ", "sql", true));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        await AssertValidationErrorAsync(response, "Value");
+    }
+
+    [Fact]
+    public async Task SensitiveWordsCreateEndpoint_ReturnsFieldErrorWhenValueIsDuplicate()
+    {
+        using var factory = new FlashInterviewApiFactory(new FakeSensitiveWordRepository { DuplicateOnCreate = true });
+        using var client = factory.CreateHttpsClient();
+
+        using var response = await client.PostAsJsonAsync("/api/sensitive-words", new CreateSensitiveWordRequest(" SELECT ", "sql"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        await AssertValidationErrorAsync(response, "Value");
+    }
+
+    [Fact]
+    public async Task SensitiveWordsUpdateEndpoint_ReturnsFieldErrorWhenValueIsDuplicate()
+    {
+        using var factory = new FlashInterviewApiFactory(new FakeSensitiveWordRepository { DuplicateOnUpdate = true });
+        using var client = factory.CreateHttpsClient();
+
+        using var response = await client.PutAsJsonAsync(
+            "/api/sensitive-words/11111111-1111-1111-1111-111111111111",
+            new UpdateSensitiveWordRequest(" SELECT ", "sql", true));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        await AssertValidationErrorAsync(response, "Value");
+    }
+
+    [Fact]
     public async Task SensitiveWordsListEndpoint_BindsFiltersAndReturnsPagedResult()
     {
         var repository = new FakeSensitiveWordRepository
@@ -90,6 +171,15 @@ public sealed class ApiSurfaceTests
         Assert.Equal("SELECT", root.GetProperty("items")[0].GetProperty("value").GetString());
     }
 
+    private static async Task AssertValidationErrorAsync(HttpResponseMessage response, string fieldName)
+    {
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        var errors = document.RootElement.GetProperty("errors");
+
+        Assert.True(errors.TryGetProperty(fieldName, out var fieldErrors), $"Expected validation error for '{fieldName}'.");
+        Assert.NotEmpty(fieldErrors.EnumerateArray());
+    }
+
     private sealed class FlashInterviewApiFactory(ISensitiveWordRepository repository) : WebApplicationFactory<Program>
     {
         public HttpClient CreateHttpsClient()
@@ -119,8 +209,17 @@ public sealed class ApiSurfaceTests
 
         public SensitiveWordQuery? LastQuery { get; private set; }
 
+        public bool DuplicateOnCreate { get; init; }
+
+        public bool DuplicateOnUpdate { get; init; }
+
         public Task<SensitiveWordDto> CreateAsync(CreateSensitiveWordRequest request, CancellationToken cancellationToken)
         {
+            if (DuplicateOnCreate)
+            {
+                throw new DuplicateSensitiveWordException(request.Value);
+            }
+
             var now = DateTimeOffset.UtcNow;
             var created = new SensitiveWordDto(
                 Guid.NewGuid(),
@@ -147,7 +246,22 @@ public sealed class ApiSurfaceTests
 
         public Task<SensitiveWordDto?> UpdateAsync(Guid id, UpdateSensitiveWordRequest request, CancellationToken cancellationToken)
         {
-            return Task.FromResult<SensitiveWordDto?>(null);
+            if (DuplicateOnUpdate)
+            {
+                throw new DuplicateSensitiveWordException(request.Value);
+            }
+
+            var now = DateTimeOffset.UtcNow;
+            var updated = new SensitiveWordDto(
+                id,
+                request.Value.Trim(),
+                SensitiveWordNormalizer.Normalize(request.Value),
+                request.Category?.Trim(),
+                request.IsActive,
+                now,
+                now);
+
+            return Task.FromResult<SensitiveWordDto?>(updated);
         }
 
         public Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken)

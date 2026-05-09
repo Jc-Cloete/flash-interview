@@ -16,8 +16,16 @@ public sealed class SensitiveWordsController(ISensitiveWordRepository repository
         [FromBody] CreateSensitiveWordRequest request,
         CancellationToken cancellationToken)
     {
-        var created = await repository.CreateAsync(request, cancellationToken);
-        return CreatedAtAction(nameof(Get), new { id = created.Id }, created);
+        try
+        {
+            var created = await repository.CreateAsync(request, cancellationToken);
+            return CreatedAtAction(nameof(Get), new { id = created.Id }, created);
+        }
+        catch (DuplicateSensitiveWordException)
+        {
+            ModelState.AddModelError(nameof(CreateSensitiveWordRequest.Value), "A sensitive word with this value already exists.");
+            return ValidationProblem(ModelState);
+        }
     }
 
     [HttpGet]
@@ -55,8 +63,16 @@ public sealed class SensitiveWordsController(ISensitiveWordRepository repository
         [FromBody] UpdateSensitiveWordRequest request,
         CancellationToken cancellationToken)
     {
-        var result = await repository.UpdateAsync(id, request, cancellationToken);
-        return result is null ? NotFound() : Ok(result);
+        try
+        {
+            var result = await repository.UpdateAsync(id, request, cancellationToken);
+            return result is null ? NotFound() : Ok(result);
+        }
+        catch (DuplicateSensitiveWordException)
+        {
+            ModelState.AddModelError(nameof(UpdateSensitiveWordRequest.Value), "A sensitive word with this value already exists.");
+            return ValidationProblem(ModelState);
+        }
     }
 
     [HttpDelete("{id:guid}")]
