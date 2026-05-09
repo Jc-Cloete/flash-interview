@@ -175,7 +175,7 @@ Health endpoints:
 - `GET /healthz`
 - `GET /readyz`
 
-Swagger UI is enabled in development at `/swagger`.
+Swagger UI is enabled in development on the API app at `http://localhost:7001/swagger`. The MVC frontend on `http://localhost:7002` does not host Swagger.
 
 ## Test Coverage
 
