@@ -19,6 +19,9 @@ services:
       Database__ApplyMigrationsOnStartup: "${DATABASE_APPLY_MIGRATIONS_ON_STARTUP:-false}"
       Database__SeedOnStartup: "${DATABASE_SEED_ON_STARTUP:-false}"
       Database__SeedFile: "docs/sql_sensitive_list.txt"
+      Security__AdminApiKey: "${FLASHINTERVIEW_ADMIN_API_KEY:?set FLASHINTERVIEW_ADMIN_API_KEY}"
+      Security__MaskRateLimit__PermitLimit: "${MASK_RATE_LIMIT_PERMIT_LIMIT:-60}"
+      Security__MaskRateLimit__WindowSeconds: "${MASK_RATE_LIMIT_WINDOW_SECONDS:-60}"
     depends_on:
       - mssql
     ports:
@@ -31,6 +34,7 @@ services:
       ASPNETCORE_ENVIRONMENT: "Production"
       ASPNETCORE_URLS: "http://+:8080"
       SensitiveWordsApi__BaseUrl: "http://api:8080/"
+      SensitiveWordsApi__AdminApiKey: "${FLASHINTERVIEW_ADMIN_API_KEY:?set FLASHINTERVIEW_ADMIN_API_KEY}"
     depends_on:
       - api
     ports:

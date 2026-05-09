@@ -16,6 +16,8 @@ namespace FlashInterview.Tests;
 
 public sealed class MssqlApiIntegrationTests : IAsyncLifetime
 {
+    private const string AdminApiKey = "mssql-test-admin-key";
+
     private readonly MssqlDatabaseFixture _database = new();
 
     public Task InitializeAsync()
@@ -33,6 +35,7 @@ public sealed class MssqlApiIntegrationTests : IAsyncLifetime
     {
         using var factory = new MssqlApiFactory(_database.ConnectionString);
         using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Admin-Api-Key", AdminApiKey);
 
         using var createResponse = await client.PostAsJsonAsync(
             "/api/sensitive-words",
@@ -84,6 +87,7 @@ public sealed class MssqlApiIntegrationTests : IAsyncLifetime
     {
         using var factory = new MssqlApiFactory(_database.ConnectionString);
         using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Admin-Api-Key", AdminApiKey);
 
         using var firstResponse = await client.PostAsJsonAsync(
             "/api/sensitive-words",
@@ -148,7 +152,8 @@ public sealed class MssqlApiIntegrationTests : IAsyncLifetime
                 {
                     ["ConnectionStrings:DefaultConnection"] = connectionString,
                     ["Database:ApplyMigrationsOnStartup"] = "false",
-                    ["Database:SeedOnStartup"] = "false"
+                    ["Database:SeedOnStartup"] = "false",
+                    ["Security:AdminApiKey"] = AdminApiKey
                 });
             });
             builder.ConfigureTestServices(services =>

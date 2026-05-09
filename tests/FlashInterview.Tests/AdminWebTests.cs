@@ -7,11 +7,14 @@ using FlashInterviewWeb::FlashInterview.Web.Clients;
 using FlashInterviewWeb::FlashInterview.Web.Controllers;
 using FlashInterviewWeb::FlashInterview.Web.Models;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
 namespace FlashInterview.Tests;
 
 public sealed class AdminWebTests
 {
+    private const string AdminApiKey = "web-admin-key";
+
     [Fact]
     public async Task ApiClient_ListAsync_SendsFilterQueryString()
     {
@@ -21,13 +24,14 @@ public sealed class AdminWebTests
                 {"items":[],"page":1,"pageSize":50,"total":0}
                 """));
         using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://api.example.test/") };
-        var client = new SensitiveWordsApiClient(httpClient);
+        var client = CreateClient(httpClient);
 
         await client.ListAsync(new SensitiveWordQuery("select *", "sql keyword", true), CancellationToken.None);
 
         Assert.Equal(
             "https://api.example.test/api/sensitive-words?q=select%20*&category=sql%20keyword&isActive=true&page=1&pageSize=50",
             handler.Requests.Single().RequestUri?.AbsoluteUri);
+        Assert.Equal(AdminApiKey, handler.Requests.Single().Headers.GetValues("X-Admin-Api-Key").Single());
     }
 
     [Fact]
@@ -36,13 +40,51 @@ public sealed class AdminWebTests
         var id = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
         using var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.NoContent));
         using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://api.example.test/") };
-        var client = new SensitiveWordsApiClient(httpClient);
+        var client = CreateClient(httpClient);
 
         await client.UpdateAsync(id, new UpdateSensitiveWordRequest("DROP", "sql", false), CancellationToken.None);
 
         var request = handler.Requests.Single();
         Assert.Equal(HttpMethod.Put, request.Method);
         Assert.Equal($"https://api.example.test/api/sensitive-words/{id}", request.RequestUri?.AbsoluteUri);
+        Assert.Equal(AdminApiKey, request.Headers.GetValues("X-Admin-Api-Key").Single());
+    }
+
+    [Theory]
+    [InlineData("create")]
+    [InlineData("delete")]
+    public async Task ApiClient_AdminWriteRequests_SendConfiguredApiKey(string operation)
+    {
+        using var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.NoContent));
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://api.example.test/") };
+        var client = CreateClient(httpClient);
+
+        if (operation == "create")
+        {
+            await client.CreateAsync(new CreateSensitiveWordRequest("DROP", "sql"), CancellationToken.None);
+        }
+        else
+        {
+            await client.DeleteAsync(Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"), CancellationToken.None);
+        }
+
+        Assert.Equal(AdminApiKey, handler.Requests.Single().Headers.GetValues("X-Admin-Api-Key").Single());
+    }
+
+    [Fact]
+    public async Task ApiClient_MaskAsync_DoesNotSendAdminApiKey()
+    {
+        using var handler = new RecordingHandler(
+            _ => JsonResponse(
+                """
+                {"originalMessage":"DROP","maskedMessage":"****","matches":[]}
+                """));
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://api.example.test/") };
+        var client = CreateClient(httpClient);
+
+        await client.MaskAsync(new MaskMessageRequest("DROP"), CancellationToken.None);
+
+        Assert.False(handler.Requests.Single().Headers.Contains("X-Admin-Api-Key"));
     }
 
     [Fact]
@@ -60,7 +102,7 @@ public sealed class AdminWebTests
                 """,
                 HttpStatusCode.BadRequest));
         using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://api.example.test/") };
-        var client = new SensitiveWordsApiClient(httpClient);
+        var client = CreateClient(httpClient);
 
         var exception = await Assert.ThrowsAsync<ApiValidationException>(
             () => client.CreateAsync(new CreateSensitiveWordRequest("DROP", "sql"), CancellationToken.None));
@@ -80,7 +122,7 @@ public sealed class AdminWebTests
                     """,
                     HttpStatusCode.BadRequest));
         using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://api.example.test/") };
-        var controller = new AdminController(new SensitiveWordsApiClient(httpClient));
+        var controller = new AdminController(CreateClient(httpClient));
 
         var result = await controller.Create(
             new CreateSensitiveWordRequest("DROP", "sql"),
@@ -124,6 +166,17 @@ public sealed class AdminWebTests
         {
             Content = new StringContent(json, Encoding.UTF8, "application/json")
         };
+    }
+
+    private static SensitiveWordsApiClient CreateClient(HttpClient httpClient)
+    {
+        return new SensitiveWordsApiClient(
+            httpClient,
+            Options.Create(new SensitiveWordsApiOptions
+            {
+                BaseUrl = "https://api.example.test/",
+                AdminApiKey = AdminApiKey
+            }));
     }
 
     private sealed class RecordingHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler

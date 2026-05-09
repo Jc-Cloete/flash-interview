@@ -2,11 +2,18 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using FlashInterview.Application.SensitiveWords;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Extensions.Options;
 
 namespace FlashInterview.Web.Clients;
 
-public sealed class SensitiveWordsApiClient(HttpClient httpClient)
+public sealed class SensitiveWordsApiClient(
+    HttpClient httpClient,
+    IOptions<SensitiveWordsApiOptions> options)
 {
+    private const string AdminApiKeyHeaderName = "X-Admin-Api-Key";
+
+    private readonly SensitiveWordsApiOptions options = options.Value;
+
     public async Task<PagedResponse<SensitiveWordDto>?> ListAsync(CancellationToken cancellationToken)
     {
         return await ListAsync(new SensitiveWordQuery(null, null, null), cancellationToken);
@@ -37,24 +44,33 @@ public sealed class SensitiveWordsApiClient(HttpClient httpClient)
         queryValues["pageSize"] = query.PageSize.ToString();
 
         var uri = QueryHelpers.AddQueryString("api/sensitive-words", queryValues);
-        return await httpClient.GetFromJsonAsync<PagedResponse<SensitiveWordDto>>(uri, cancellationToken);
+        using var request = CreateAdminRequest(HttpMethod.Get, uri);
+        using var response = await httpClient.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<PagedResponse<SensitiveWordDto>>(cancellationToken);
     }
 
     public async Task CreateAsync(CreateSensitiveWordRequest request, CancellationToken cancellationToken)
     {
-        var response = await httpClient.PostAsJsonAsync("api/sensitive-words", request, cancellationToken);
+        using var httpRequest = CreateAdminRequest(HttpMethod.Post, "api/sensitive-words");
+        httpRequest.Content = JsonContent.Create(request);
+        using var response = await httpClient.SendAsync(httpRequest, cancellationToken);
         await EnsureSuccessOrThrowValidationAsync(response, cancellationToken);
     }
 
     public async Task UpdateAsync(Guid id, UpdateSensitiveWordRequest request, CancellationToken cancellationToken)
     {
-        var response = await httpClient.PutAsJsonAsync($"api/sensitive-words/{id}", request, cancellationToken);
+        using var httpRequest = CreateAdminRequest(HttpMethod.Put, $"api/sensitive-words/{id}");
+        httpRequest.Content = JsonContent.Create(request);
+        using var response = await httpClient.SendAsync(httpRequest, cancellationToken);
         await EnsureSuccessOrThrowValidationAsync(response, cancellationToken);
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken cancellationToken)
     {
-        var response = await httpClient.DeleteAsync($"api/sensitive-words/{id}", cancellationToken);
+        using var httpRequest = CreateAdminRequest(HttpMethod.Delete, $"api/sensitive-words/{id}");
+        using var response = await httpClient.SendAsync(httpRequest, cancellationToken);
         await EnsureSuccessOrThrowValidationAsync(response, cancellationToken);
     }
 
@@ -64,6 +80,17 @@ public sealed class SensitiveWordsApiClient(HttpClient httpClient)
         response.EnsureSuccessStatusCode();
 
         return await response.Content.ReadFromJsonAsync<MaskMessageResponse>(cancellationToken);
+    }
+
+    private HttpRequestMessage CreateAdminRequest(HttpMethod method, string uri)
+    {
+        var request = new HttpRequestMessage(method, uri);
+        if (!string.IsNullOrWhiteSpace(options.AdminApiKey))
+        {
+            request.Headers.Add(AdminApiKeyHeaderName, options.AdminApiKey);
+        }
+
+        return request;
     }
 
     private static async Task EnsureSuccessOrThrowValidationAsync(

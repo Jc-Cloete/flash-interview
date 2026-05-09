@@ -1,8 +1,12 @@
+using FlashInterview.Api.Security;
 using FlashInterview.Application.SensitiveWords;
 using FlashInterview.Infrastructure;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.OpenApi;
 using Serilog;
 using Serilog.Events;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -18,10 +22,47 @@ builder.Host.UseSerilog((context, loggerConfiguration) =>
 builder.Services.AddFlashInterviewInfrastructure(builder.Configuration);
 builder.Services.AddSingleton<SensitiveWordMasker>();
 builder.Services.AddControllers();
+builder.Services
+    .AddAuthentication(AdminApiKeyAuthenticationHandler.SchemeName)
+    .AddScheme<AuthenticationSchemeOptions, AdminApiKeyAuthenticationHandler>(
+        AdminApiKeyAuthenticationHandler.SchemeName,
+        _ => { });
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("AdminApiKey", policy =>
+    {
+        policy.AddAuthenticationSchemes(AdminApiKeyAuthenticationHandler.SchemeName);
+        policy.RequireAuthenticatedUser();
+    });
+});
+builder.Services.AddRateLimiter(options =>
+{
+    var permitLimit = Math.Max(1, builder.Configuration.GetValue("Security:MaskRateLimit:PermitLimit", 60));
+    var windowSeconds = Math.Max(1, builder.Configuration.GetValue("Security:MaskRateLimit:WindowSeconds", 60));
+
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("MaskMessage", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = permitLimit,
+                Window = TimeSpan.FromSeconds(windowSeconds),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            }));
+});
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
     options.EnableAnnotations();
+    options.AddSecurityDefinition(AdminApiKeyAuthenticationHandler.SchemeName, new OpenApiSecurityScheme
+    {
+        Name = AdminApiKeyAuthenticationHandler.HeaderName,
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.ApiKey,
+        Description = "API key required for internal sensitive-word administration endpoints."
+    });
 });
 builder.Services.AddHealthChecks();
 
@@ -70,6 +111,8 @@ app.UseSerilogRequestLogging(options =>
     };
 });
 app.UseHttpsRedirection();
+app.UseRateLimiter();
+app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 app.MapHealthChecks("/healthz");

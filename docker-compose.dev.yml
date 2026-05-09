@@ -21,6 +21,9 @@ services:
       Database__ApplyMigrationsOnStartup: "true"
       Database__SeedOnStartup: "true"
       Database__SeedFile: "/workspace/docs/sql_sensitive_list.txt"
+      Security__AdminApiKey: "local-dev-admin-key"
+      Security__MaskRateLimit__PermitLimit: "60"
+      Security__MaskRateLimit__WindowSeconds: "60"
     depends_on:
       - mssql
     ports:
@@ -42,6 +45,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: "Development"
       SensitiveWordsApi__BaseUrl: "http://api:8080/"
+      SensitiveWordsApi__AdminApiKey: "local-dev-admin-key"
     depends_on:
       - api
     ports:

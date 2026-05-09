@@ -1,4 +1,5 @@
 using FlashInterview.Application.SensitiveWords;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Swashbuckle.AspNetCore.Annotations;
 
@@ -6,12 +7,14 @@ namespace FlashInterview.Api.Controllers;
 
 [ApiController]
 [Route("api/sensitive-words")]
+[Authorize(Policy = "AdminApiKey")]
 public sealed class SensitiveWordsController(ISensitiveWordRepository repository) : ControllerBase
 {
     [HttpPost]
     [SwaggerOperation(Summary = "Create a sensitive word", Description = "Creates a new sensitive word for internal administration.")]
     [SwaggerResponse(StatusCodes.Status201Created, "The sensitive word was created.", typeof(SensitiveWordDto))]
     [SwaggerResponse(StatusCodes.Status400BadRequest, "The request body failed validation.")]
+    [SwaggerResponse(StatusCodes.Status401Unauthorized, "Missing or invalid admin API key.")]
     public async Task<ActionResult<SensitiveWordDto>> Create(
         [FromBody] CreateSensitiveWordRequest request,
         CancellationToken cancellationToken)
@@ -31,6 +34,7 @@ public sealed class SensitiveWordsController(ISensitiveWordRepository repository
     [HttpGet]
     [SwaggerOperation(Summary = "List sensitive words", Description = "Lists sensitive words with optional filtering and pagination.")]
     [SwaggerResponse(StatusCodes.Status200OK, "The paged sensitive-word list.", typeof(PagedResponse<SensitiveWordDto>))]
+    [SwaggerResponse(StatusCodes.Status401Unauthorized, "Missing or invalid admin API key.")]
     public async Task<ActionResult<PagedResponse<SensitiveWordDto>>> List(
         [FromQuery] string? q,
         [FromQuery] string? category,
@@ -46,6 +50,7 @@ public sealed class SensitiveWordsController(ISensitiveWordRepository repository
     [HttpGet("{id:guid}")]
     [SwaggerOperation(Summary = "Get a sensitive word", Description = "Gets one sensitive word by identifier.")]
     [SwaggerResponse(StatusCodes.Status200OK, "The sensitive word was found.", typeof(SensitiveWordDto))]
+    [SwaggerResponse(StatusCodes.Status401Unauthorized, "Missing or invalid admin API key.")]
     [SwaggerResponse(StatusCodes.Status404NotFound, "No sensitive word exists for the supplied identifier.")]
     public async Task<ActionResult<SensitiveWordDto>> Get(Guid id, CancellationToken cancellationToken)
     {
@@ -57,6 +62,7 @@ public sealed class SensitiveWordsController(ISensitiveWordRepository repository
     [SwaggerOperation(Summary = "Update a sensitive word", Description = "Updates the value, category, and active status for a sensitive word.")]
     [SwaggerResponse(StatusCodes.Status200OK, "The sensitive word was updated.", typeof(SensitiveWordDto))]
     [SwaggerResponse(StatusCodes.Status400BadRequest, "The request body failed validation.")]
+    [SwaggerResponse(StatusCodes.Status401Unauthorized, "Missing or invalid admin API key.")]
     [SwaggerResponse(StatusCodes.Status404NotFound, "No sensitive word exists for the supplied identifier.")]
     public async Task<ActionResult<SensitiveWordDto>> Update(
         Guid id,
@@ -78,6 +84,7 @@ public sealed class SensitiveWordsController(ISensitiveWordRepository repository
     [HttpDelete("{id:guid}")]
     [SwaggerOperation(Summary = "Delete a sensitive word", Description = "Deletes a sensitive word from the internal administration list.")]
     [SwaggerResponse(StatusCodes.Status204NoContent, "The sensitive word was deleted.")]
+    [SwaggerResponse(StatusCodes.Status401Unauthorized, "Missing or invalid admin API key.")]
     [SwaggerResponse(StatusCodes.Status404NotFound, "No sensitive word exists for the supplied identifier.")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {

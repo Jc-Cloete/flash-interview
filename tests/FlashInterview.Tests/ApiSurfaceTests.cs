@@ -5,6 +5,7 @@ using FlashInterview.Application.SensitiveWords;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -12,6 +13,8 @@ namespace FlashInterview.Tests;
 
 public sealed class ApiSurfaceTests
 {
+    private const string AdminApiKey = "test-admin-key";
+
     [Fact]
     public async Task MaskEndpoint_MasksMessageUsingActiveRepositoryCandidates()
     {
@@ -39,6 +42,65 @@ public sealed class ApiSurfaceTests
         Assert.Equal(0, root.GetProperty("matches")[0].GetProperty("start").GetInt32());
         Assert.Equal(4, root.GetProperty("matches")[0].GetProperty("end").GetInt32());
         Assert.Equal("SELECT * FROM", root.GetProperty("matches")[1].GetProperty("value").GetString());
+    }
+
+    [Theory]
+    [InlineData("GET", "/api/sensitive-words")]
+    [InlineData("GET", "/api/sensitive-words/11111111-1111-1111-1111-111111111111")]
+    [InlineData("POST", "/api/sensitive-words")]
+    [InlineData("PUT", "/api/sensitive-words/11111111-1111-1111-1111-111111111111")]
+    [InlineData("DELETE", "/api/sensitive-words/11111111-1111-1111-1111-111111111111")]
+    public async Task SensitiveWordsEndpoints_RejectRequestsWithoutAdminApiKey(string method, string path)
+    {
+        using var factory = new FlashInterviewApiFactory(new FakeSensitiveWordRepository(), AdminApiKey);
+        using var client = factory.CreateHttpsClient();
+        using var request = new HttpRequestMessage(new HttpMethod(method), path);
+
+        if (method is "POST")
+        {
+            request.Content = JsonContent.Create(new CreateSensitiveWordRequest("DROP", "sql"));
+        }
+        else if (method is "PUT")
+        {
+            request.Content = JsonContent.Create(new UpdateSensitiveWordRequest("DROP", "sql", true));
+        }
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task SensitiveWordsCreateEndpoint_AcceptsConfiguredAdminApiKey()
+    {
+        using var factory = new FlashInterviewApiFactory(new FakeSensitiveWordRepository(), AdminApiKey);
+        using var client = factory.CreateHttpsClient();
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/sensitive-words")
+        {
+            Content = JsonContent.Create(new CreateSensitiveWordRequest("DROP", "sql"))
+        };
+        request.Headers.Add("X-Admin-Api-Key", AdminApiKey);
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task MaskEndpoint_ReturnsTooManyRequestsWhenRateLimitIsExceeded()
+    {
+        using var factory = new FlashInterviewApiFactory(
+            new FakeSensitiveWordRepository(),
+            rateLimitPermitLimit: 1,
+            rateLimitWindowSeconds: 60);
+        using var client = factory.CreateHttpsClient();
+
+        using var firstResponse = await client.PostAsJsonAsync("/api/messages/mask", new MaskMessageRequest("DROP"));
+        using var secondResponse = await client.PostAsJsonAsync("/api/messages/mask", new MaskMessageRequest("DROP"));
+
+        firstResponse.EnsureSuccessStatusCode();
+        Assert.Equal(HttpStatusCode.TooManyRequests, secondResponse.StatusCode);
     }
 
     [Fact]
@@ -84,8 +146,9 @@ public sealed class ApiSurfaceTests
     [Fact]
     public async Task SensitiveWordsCreateEndpoint_ReturnsFieldErrorWhenValueIsWhitespace()
     {
-        using var factory = new FlashInterviewApiFactory(new FakeSensitiveWordRepository());
+        using var factory = new FlashInterviewApiFactory(new FakeSensitiveWordRepository(), AdminApiKey);
         using var client = factory.CreateHttpsClient();
+        client.DefaultRequestHeaders.Add("X-Admin-Api-Key", AdminApiKey);
 
         using var response = await client.PostAsJsonAsync("/api/sensitive-words", new CreateSensitiveWordRequest("   ", "sql"));
 
@@ -96,8 +159,9 @@ public sealed class ApiSurfaceTests
     [Fact]
     public async Task SensitiveWordsUpdateEndpoint_ReturnsFieldErrorWhenValueIsWhitespace()
     {
-        using var factory = new FlashInterviewApiFactory(new FakeSensitiveWordRepository());
+        using var factory = new FlashInterviewApiFactory(new FakeSensitiveWordRepository(), AdminApiKey);
         using var client = factory.CreateHttpsClient();
+        client.DefaultRequestHeaders.Add("X-Admin-Api-Key", AdminApiKey);
 
         using var response = await client.PutAsJsonAsync(
             "/api/sensitive-words/11111111-1111-1111-1111-111111111111",
@@ -110,8 +174,9 @@ public sealed class ApiSurfaceTests
     [Fact]
     public async Task SensitiveWordsCreateEndpoint_ReturnsFieldErrorWhenValueIsDuplicate()
     {
-        using var factory = new FlashInterviewApiFactory(new FakeSensitiveWordRepository { DuplicateOnCreate = true });
+        using var factory = new FlashInterviewApiFactory(new FakeSensitiveWordRepository { DuplicateOnCreate = true }, AdminApiKey);
         using var client = factory.CreateHttpsClient();
+        client.DefaultRequestHeaders.Add("X-Admin-Api-Key", AdminApiKey);
 
         using var response = await client.PostAsJsonAsync("/api/sensitive-words", new CreateSensitiveWordRequest(" SELECT ", "sql"));
 
@@ -122,8 +187,9 @@ public sealed class ApiSurfaceTests
     [Fact]
     public async Task SensitiveWordsUpdateEndpoint_ReturnsFieldErrorWhenValueIsDuplicate()
     {
-        using var factory = new FlashInterviewApiFactory(new FakeSensitiveWordRepository { DuplicateOnUpdate = true });
+        using var factory = new FlashInterviewApiFactory(new FakeSensitiveWordRepository { DuplicateOnUpdate = true }, AdminApiKey);
         using var client = factory.CreateHttpsClient();
+        client.DefaultRequestHeaders.Add("X-Admin-Api-Key", AdminApiKey);
 
         using var response = await client.PutAsJsonAsync(
             "/api/sensitive-words/11111111-1111-1111-1111-111111111111",
@@ -154,8 +220,9 @@ public sealed class ApiSurfaceTests
                 10)
         };
 
-        using var factory = new FlashInterviewApiFactory(repository);
+        using var factory = new FlashInterviewApiFactory(repository, AdminApiKey);
         using var client = factory.CreateHttpsClient();
+        client.DefaultRequestHeaders.Add("X-Admin-Api-Key", AdminApiKey);
 
         using var response = await client.GetAsync("/api/sensitive-words?q=sel&category=sql&isActive=true&page=2&pageSize=3");
 
@@ -180,7 +247,11 @@ public sealed class ApiSurfaceTests
         Assert.NotEmpty(fieldErrors.EnumerateArray());
     }
 
-    private sealed class FlashInterviewApiFactory(ISensitiveWordRepository repository) : WebApplicationFactory<Program>
+    private sealed class FlashInterviewApiFactory(
+        ISensitiveWordRepository repository,
+        string? adminApiKey = null,
+        int? rateLimitPermitLimit = null,
+        int? rateLimitWindowSeconds = null) : WebApplicationFactory<Program>
     {
         public HttpClient CreateHttpsClient()
         {
@@ -192,6 +263,27 @@ public sealed class ApiSurfaceTests
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment("Production");
+            builder.ConfigureAppConfiguration((_, configurationBuilder) =>
+            {
+                var configuration = new Dictionary<string, string?>();
+
+                if (adminApiKey is not null)
+                {
+                    configuration["Security:AdminApiKey"] = adminApiKey;
+                }
+
+                if (rateLimitPermitLimit is not null)
+                {
+                    configuration["Security:MaskRateLimit:PermitLimit"] = rateLimitPermitLimit.Value.ToString();
+                }
+
+                if (rateLimitWindowSeconds is not null)
+                {
+                    configuration["Security:MaskRateLimit:WindowSeconds"] = rateLimitWindowSeconds.Value.ToString();
+                }
+
+                configurationBuilder.AddInMemoryCollection(configuration);
+            });
             builder.ConfigureTestServices(services =>
             {
                 services.RemoveAll<ISensitiveWordRepository>();
