@@ -1,0 +1,24 @@
+services:
+  aspire-dashboard:
+    image: mcr.microsoft.com/dotnet/aspire-dashboard:latest
+    environment:
+      DOTNET_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS: "true"
+    ports:
+      - "127.0.0.1:18888:18888"
+      - "127.0.0.1:18889:18889"
+
+  api:
+    environment:
+      OpenTelemetry__ServiceName: "FlashInterview.Api"
+      OpenTelemetry__OtlpEndpoint: "http://aspire-dashboard:18889"
+    depends_on:
+      aspire-dashboard:
+        condition: service_started
+
+  web:
+    environment:
+      OpenTelemetry__ServiceName: "FlashInterview.Web"
+      OpenTelemetry__OtlpEndpoint: "http://aspire-dashboard:18889"
+    depends_on:
+      aspire-dashboard:
+        condition: service_started

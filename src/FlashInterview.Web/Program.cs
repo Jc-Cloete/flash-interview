@@ -1,5 +1,8 @@
 using FlashInterview.Web.Clients;
 using Microsoft.AspNetCore.Diagnostics;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 using Serilog;
 using Serilog.Events;
 
@@ -13,6 +16,43 @@ builder.Host.UseSerilog((context, loggerConfiguration) =>
         .Enrich.WithProperty("Application", "FlashInterview.Web")
         .WriteTo.Console();
 });
+
+var webServiceName = builder.Configuration.GetValue("OpenTelemetry:ServiceName", "FlashInterview.Web");
+var webOtlpEndpoint = builder.Configuration["OpenTelemetry:OtlpEndpoint"];
+
+builder.Services
+    .AddOpenTelemetry()
+    .ConfigureResource(resource => resource.AddService(webServiceName))
+    .WithMetrics(metrics =>
+    {
+        metrics
+            .AddAspNetCoreInstrumentation()
+            .AddHttpClientInstrumentation()
+            .AddRuntimeInstrumentation()
+            .AddMeter("Microsoft.AspNetCore.Hosting")
+            .AddMeter("Microsoft.AspNetCore.Server.Kestrel")
+            .AddMeter("System.Net.Http");
+
+        if (!string.IsNullOrWhiteSpace(webOtlpEndpoint))
+        {
+            metrics.AddOtlpExporter(options => options.Endpoint = new Uri(webOtlpEndpoint));
+        }
+    })
+    .WithTracing(tracing =>
+    {
+        tracing
+            .AddAspNetCoreInstrumentation(options =>
+            {
+                options.Filter = httpContext =>
+                    !httpContext.Request.Path.StartsWithSegments("/healthz");
+            })
+            .AddHttpClientInstrumentation();
+
+        if (!string.IsNullOrWhiteSpace(webOtlpEndpoint))
+        {
+            tracing.AddOtlpExporter(options => options.Endpoint = new Uri(webOtlpEndpoint));
+        }
+    });
 
 builder.Services.AddControllersWithViews();
 builder.Services.Configure<SensitiveWordsApiOptions>(

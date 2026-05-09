@@ -9,6 +9,9 @@ using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.OpenApi;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 using Serilog;
 using Serilog.Events;
 using System.Net;
@@ -24,6 +27,50 @@ builder.Host.UseSerilog((context, loggerConfiguration) =>
         .Enrich.WithProperty("Application", "FlashInterview.Api")
         .WriteTo.Console();
 });
+
+var apiServiceName = builder.Configuration.GetValue("OpenTelemetry:ServiceName", "FlashInterview.Api");
+var apiOtlpEndpoint = builder.Configuration["OpenTelemetry:OtlpEndpoint"];
+
+builder.Services
+    .AddOpenTelemetry()
+    .ConfigureResource(resource => resource.AddService(apiServiceName))
+    .WithMetrics(metrics =>
+    {
+        metrics
+            .AddAspNetCoreInstrumentation()
+            .AddHttpClientInstrumentation()
+            .AddRuntimeInstrumentation()
+            .AddMeter("FlashInterview.Api.Masking")
+            .AddMeter("Microsoft.AspNetCore.Hosting")
+            .AddMeter("Microsoft.AspNetCore.Server.Kestrel")
+            .AddMeter("System.Net.Http");
+
+        if (!string.IsNullOrWhiteSpace(apiOtlpEndpoint))
+        {
+            metrics.AddOtlpExporter(options => options.Endpoint = new Uri(apiOtlpEndpoint));
+        }
+    })
+    .WithTracing(tracing =>
+    {
+        tracing
+            .AddAspNetCoreInstrumentation(options =>
+            {
+                options.Filter = httpContext =>
+                    !httpContext.Request.Path.StartsWithSegments("/healthz")
+                    && !httpContext.Request.Path.StartsWithSegments("/readyz");
+            })
+            .AddHttpClientInstrumentation()
+            .AddEntityFrameworkCoreInstrumentation(options =>
+            {
+                options.EnrichWithIDbCommand = (activity, command) =>
+                    activity.SetTag("db.statement", command.CommandText);
+            });
+
+        if (!string.IsNullOrWhiteSpace(apiOtlpEndpoint))
+        {
+            tracing.AddOtlpExporter(options => options.Endpoint = new Uri(apiOtlpEndpoint));
+        }
+    });
 
 builder.Services.AddFlashInterviewInfrastructure(builder.Configuration);
 builder.Services.AddSingleton<ISensitiveWordMatcherCache, SensitiveWordMatcherCache>();

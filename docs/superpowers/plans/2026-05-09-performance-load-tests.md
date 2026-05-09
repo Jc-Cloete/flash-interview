@@ -74,7 +74,7 @@ dotnet run --project tests/FlashInterview.PerformanceTests -- benchmark --filter
 - Modify: `src/FlashInterview.Web/Program.cs`
 - Create: `docker-compose.observability.yml`
 
-- [ ] **Step 1: Add OpenTelemetry packages**
+- [x] **Step 1: Add OpenTelemetry packages**
 
 Run:
 
@@ -94,7 +94,7 @@ dotnet add src/FlashInterview.Web/FlashInterview.Web.csproj package OpenTelemetr
 
 Expected: package references are added to API and Web projects.
 
-- [ ] **Step 2: Configure API OpenTelemetry**
+- [x] **Step 2: Configure API OpenTelemetry**
 
 In `src/FlashInterview.Api/Program.cs`, add these usings:
 
@@ -153,7 +153,7 @@ builder.Services
 
 Expected: the API emits ASP.NET request metrics, Kestrel metrics, runtime metrics, HTTP client traces, EF Core database spans, and custom masking meters when an OTLP endpoint is configured.
 
-- [ ] **Step 3: Configure Web OpenTelemetry**
+- [x] **Step 3: Configure Web OpenTelemetry**
 
 In `src/FlashInterview.Web/Program.cs`, add these usings:
 
@@ -206,7 +206,7 @@ builder.Services
 
 Expected: MVC request timing and Web-to-API HTTP calls appear in the dashboard when OTLP is enabled.
 
-- [ ] **Step 4: Add observability compose overlay**
+- [x] **Step 4: Add observability compose overlay**
 
 Create `docker-compose.observability.yml`:
 
@@ -239,7 +239,7 @@ services:
 
 Expected: running `docker compose -f docker-compose.dev.yml -f docker-compose.observability.yml up --build` starts the dashboard on `http://localhost:18888` and gives API/Web an OTLP endpoint.
 
-- [ ] **Step 5: Verify build**
+- [x] **Step 5: Verify build**
 
 Run:
 
@@ -250,7 +250,7 @@ dotnet build FlashInterview.slnx --no-restore
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 Run:
 
