@@ -1,0 +1,56 @@
+@model FlashInterview.Web.Models.AdminViewModel
+
+@{
+    ViewData["Title"] = "Sensitive Words Admin";
+}
+
+<h1>Sensitive Words Admin</h1>
+
+<form asp-action="Create" method="post" class="mb-4">
+    <div class="row g-2">
+        <div class="col-md-5">
+            <label class="form-label" for="Value">Word or phrase</label>
+            <input class="form-control" id="Value" name="Value" value="@Model.NewSensitiveWord.Value" maxlength="256" required />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label" for="Category">Category</label>
+            <input class="form-control" id="Category" name="Category" value="@(Model.NewSensitiveWord.Category ?? "sql")" maxlength="64" />
+        </div>
+        <div class="col-md-2 d-flex align-items-end">
+            <div class="form-check">
+                <input class="form-check-input" id="IsActive" name="IsActive" type="checkbox" value="true" checked="@Model.NewSensitiveWord.IsActive" />
+                <label class="form-check-label" for="IsActive">Active</label>
+            </div>
+        </div>
+        <div class="col-md-2 d-flex align-items-end">
+            <button class="btn btn-primary w-100" type="submit">Add</button>
+        </div>
+    </div>
+</form>
+
+<table class="table table-striped align-middle">
+    <thead>
+        <tr>
+            <th>Value</th>
+            <th>Category</th>
+            <th>Status</th>
+            <th class="text-end">Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+    @foreach (var word in Model.SensitiveWords)
+    {
+        <tr>
+            <td>@word.Value</td>
+            <td>@(word.Category ?? "-")</td>
+            <td>@(word.IsActive ? "Active" : "Inactive")</td>
+            <td class="text-end">
+                <form asp-action="Delete" method="post">
+                    <input type="hidden" name="id" value="@word.Id" />
+                    <button class="btn btn-outline-danger btn-sm" type="submit">Delete</button>
+                </form>
+            </td>
+        </tr>
+    }
+    </tbody>
+</table>

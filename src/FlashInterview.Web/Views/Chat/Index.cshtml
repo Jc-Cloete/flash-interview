@@ -1,0 +1,22 @@
+@model FlashInterview.Web.Models.ChatViewModel
+
+@{
+    ViewData["Title"] = "Mock Chat";
+}
+
+<h1>Mock Chat</h1>
+
+<form asp-action="Index" method="post" class="mb-4">
+    <label class="form-label" for="message">Message</label>
+    <textarea class="form-control mb-3" id="message" name="message" rows="4" maxlength="10000" required>@Model.Message</textarea>
+    <button class="btn btn-primary" type="submit">Bloop message</button>
+</form>
+
+@if (Model.Result is not null)
+{
+    <section class="border rounded p-3">
+        <h2 class="h5">Result</h2>
+        <p><strong>Original:</strong> @Model.Result.OriginalMessage</p>
+        <p><strong>Masked:</strong> @Model.Result.MaskedMessage</p>
+    </section>
+}

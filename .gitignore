@@ -1,0 +1,48 @@
+# Build output
+bin/
+obj/
+artifacts/
+publish/
+
+# Test and coverage output
+TestResults/
+coverage/
+coverage.*/
+*.coverage
+*.coveragexml
+*.trx
+*.cobertura.xml
+
+# Local .NET and IDE state
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.DotSettings.user
+
+# Rider/ReSharper
+_ReSharper*/
+*.rsuser
+
+# Logs and diagnostics
+*.log
+logs/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+appsettings.Local.json
+appsettings.*.Local.json
+secrets.json
+
+# Docker local overrides
+docker-compose.override.yml
+docker-compose.*.override.yml
+
+# OS files
+.DS_Store
+Thumbs.db

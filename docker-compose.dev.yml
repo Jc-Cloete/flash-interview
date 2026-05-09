@@ -1,0 +1,69 @@
+services:
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Your_strong_password123"
+      MSSQL_PID: "Developer"
+    ports:
+      - "1433:1433"
+    volumes:
+      - mssql-data:/var/opt/mssql
+
+  api:
+    build:
+      context: .
+      dockerfile: src/FlashInterview.Api/Dockerfile.dev
+    environment:
+      ASPNETCORE_ENVIRONMENT: "Development"
+      ConnectionStrings__DefaultConnection: "Server=mssql,1433;Database=FlashInterview;User Id=sa;Password=Your_strong_password123;TrustServerCertificate=True;"
+      Database__EnsureCreatedOnStartup: "true"
+      Database__SeedFile: "/workspace/docs/sql_sensitive_list.txt"
+    depends_on:
+      - mssql
+    ports:
+      - "7001:8080"
+    volumes:
+      - .:/workspace
+      - api-nuget:/root/.nuget/packages
+      - application-bin:/workspace/src/FlashInterview.Application/bin
+      - application-obj:/workspace/src/FlashInterview.Application/obj
+      - infrastructure-bin:/workspace/src/FlashInterview.Infrastructure/bin
+      - infrastructure-obj:/workspace/src/FlashInterview.Infrastructure/obj
+      - api-bin:/workspace/src/FlashInterview.Api/bin
+      - api-obj:/workspace/src/FlashInterview.Api/obj
+
+  web:
+    build:
+      context: .
+      dockerfile: src/FlashInterview.Web/Dockerfile.dev
+    environment:
+      ASPNETCORE_ENVIRONMENT: "Development"
+      SensitiveWordsApi__BaseUrl: "http://api:8080/"
+    depends_on:
+      - api
+    ports:
+      - "7002:8080"
+    volumes:
+      - .:/workspace
+      - web-nuget:/root/.nuget/packages
+      - web-application-bin:/workspace/src/FlashInterview.Application/bin
+      - web-application-obj:/workspace/src/FlashInterview.Application/obj
+      - web-bin:/workspace/src/FlashInterview.Web/bin
+      - web-obj:/workspace/src/FlashInterview.Web/obj
+
+volumes:
+  mssql-data:
+  api-nuget:
+  web-nuget:
+  application-bin:
+  application-obj:
+  infrastructure-bin:
+  infrastructure-obj:
+  api-bin:
+  api-obj:
+  web-application-bin:
+  web-application-obj:
+  web-bin:
+  web-obj:

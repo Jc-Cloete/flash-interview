@@ -1,0 +1,5 @@
+FROM mcr.microsoft.com/dotnet/sdk:10.0
+WORKDIR /workspace
+ENV DOTNET_USE_POLLING_FILE_WATCHER=true
+EXPOSE 8080
+CMD ["dotnet", "watch", "--project", "src/FlashInterview.Api/FlashInterview.Api.csproj", "run", "--urls", "http://0.0.0.0:8080"]
