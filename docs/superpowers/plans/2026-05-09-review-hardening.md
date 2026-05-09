@@ -211,7 +211,7 @@ git commit -m "fix: make readiness verify sql server"
 **Files:**
 - Modify: `.github/workflows/pr-checks.yml`
 
-- [ ] **Step 1: Update CI to start SQL Server**
+- [x] **Step 1: Update CI to start SQL Server**
 
 In `.github/workflows/pr-checks.yml`, under the `dotnet` job and before `steps:`, add:
 
@@ -239,7 +239,7 @@ In the `Test` step, add:
           FLASHINTERVIEW_TEST_MSSQL_MASTER: "Server=localhost,1433;Database=master;User Id=sa;Password=Your_strong_password123;TrustServerCertificate=True;Encrypt=True;Connect Timeout=5"
 ```
 
-- [ ] **Step 2: Validate workflow syntax locally**
+- [x] **Step 2: Validate workflow syntax locally**
 
 Run:
 
@@ -256,7 +256,7 @@ PY
 
 Expected: `workflow contains MSSQL CI service`.
 
-- [ ] **Step 3: Run local verification**
+- [x] **Step 3: Run local verification**
 
 Run:
 
@@ -266,7 +266,7 @@ dotnet test FlashInterview.slnx --no-build
 
 Expected: PASS. If local SQL Server is available, MSSQL tests run; otherwise local tests may skip, while CI will run them because the service is configured.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 Run:
 
