@@ -11,6 +11,8 @@ services:
     environment:
       OpenTelemetry__ServiceName: "FlashInterview.Api"
       OpenTelemetry__OtlpEndpoint: "http://aspire-dashboard:18889"
+      Security__MaskRateLimit__PermitLimit: "6000"
+      Security__MaskRateLimit__WindowSeconds: "60"
     depends_on:
       aspire-dashboard:
         condition: service_started

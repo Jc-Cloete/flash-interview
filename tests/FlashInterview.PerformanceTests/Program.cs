@@ -26,7 +26,17 @@ static int RunBenchmarks(string[] args)
 
 static async Task<int> RunLoadTests(string[] args)
 {
-    var options = LoadTestOptions.Parse(args);
+    LoadTestOptions options;
+    try
+    {
+        options = LoadTestOptions.Parse(args);
+    }
+    catch (ArgumentException exception)
+    {
+        Console.Error.WriteLine(exception.Message);
+        return 2;
+    }
+
     await FlashInterviewLoadScenarios.RunAsync(options);
     return 0;
 }
@@ -42,5 +52,5 @@ static void PrintUsage()
 {
     Console.WriteLine("Usage:");
     Console.WriteLine("  dotnet run --project tests/FlashInterview.PerformanceTests -- benchmark [BenchmarkDotNet args]");
-    Console.WriteLine("  dotnet run --project tests/FlashInterview.PerformanceTests -- load --base-url http://localhost:7001 --admin-api-key local-dev-admin-key [--smoke|--profile baseline|capacity]");
+    Console.WriteLine("  dotnet run --project tests/FlashInterview.PerformanceTests -- load --base-url http://localhost:7001 --admin-api-key local-dev-admin-key [--smoke|--profile baseline|capacity] [--client-ip-pool-size 100]");
 }

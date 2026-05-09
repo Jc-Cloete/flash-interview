@@ -576,7 +576,7 @@ git commit -m "test: add performance benchmark project"
 - Create: `tests/FlashInterview.PerformanceTests/LoadTests/LoadTestOptions.cs`
 - Create: `tests/FlashInterview.PerformanceTests/LoadTests/FlashInterviewLoadScenarios.cs`
 
-- [ ] **Step 1: Add load test options**
+- [x] **Step 1: Add load test options**
 
 Create `tests/FlashInterview.PerformanceTests/LoadTests/LoadTestOptions.cs`:
 
@@ -618,7 +618,7 @@ public sealed record LoadTestOptions(
 }
 ```
 
-- [ ] **Step 2: Add NBomber scenarios**
+- [x] **Step 2: Add NBomber scenarios**
 
 Create `tests/FlashInterview.PerformanceTests/LoadTests/FlashInterviewLoadScenarios.cs`:
 
@@ -716,7 +716,7 @@ public static class FlashInterviewLoadScenarios
 }
 ```
 
-- [ ] **Step 3: Verify compile and fix package API drift**
+- [x] **Step 3: Verify compile and fix package API drift**
 
 Run:
 
@@ -726,7 +726,7 @@ dotnet build tests/FlashInterview.PerformanceTests/FlashInterview.PerformanceTes
 
 Expected: PASS. If NBomber or NBomber.Http APIs differ from the snippets above, inspect compiler errors and adjust only files under `tests/FlashInterview.PerformanceTests`.
 
-- [ ] **Step 4: Run benchmark smoke**
+- [x] **Step 4: Run benchmark smoke**
 
 Run:
 
@@ -736,7 +736,7 @@ dotnet run --project tests/FlashInterview.PerformanceTests -- benchmark --filter
 
 Expected: PASS with BenchmarkDotNet output and artifacts ignored by git.
 
-- [ ] **Step 5: Run load smoke when API is available**
+- [x] **Step 5: Run load smoke when API is available**
 
 Start the stack if needed:
 
@@ -752,7 +752,7 @@ dotnet run --project tests/FlashInterview.PerformanceTests -- load --base-url ht
 
 Expected: PASS with NBomber output and report files under `artifacts/performance/`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 Run:
 
