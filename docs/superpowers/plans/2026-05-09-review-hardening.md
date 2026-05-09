@@ -1048,7 +1048,7 @@ git commit -m "docs: clarify operational hardening choices"
 **Files:**
 - Verify all changed files.
 
-- [ ] **Step 1: Run repository checks**
+- [x] **Step 1: Run repository checks**
 
 Run:
 
@@ -1060,7 +1060,7 @@ dotnet test FlashInterview.slnx --no-build
 
 Expected: restore succeeds, build succeeds with `0 Error(s)`, tests pass.
 
-- [ ] **Step 2: Validate Docker configuration**
+- [x] **Step 2: Validate Docker configuration**
 
 Run:
 
@@ -1072,7 +1072,7 @@ MSSQL_SA_PASSWORD=Test_password123 FLASHINTERVIEW_ADMIN_API_KEY=test-key FLASH_I
 
 Expected: all commands exit `0`.
 
-- [ ] **Step 3: Inspect git state**
+- [x] **Step 3: Inspect git state**
 
 Run:
 
