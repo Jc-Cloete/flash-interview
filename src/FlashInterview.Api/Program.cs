@@ -4,6 +4,8 @@ using FlashInterview.Application.SensitiveWords;
 using FlashInterview.Infrastructure;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.OpenApi;
 using Serilog;
 using Serilog.Events;
@@ -69,7 +71,15 @@ builder.Services.AddSwaggerGen(options =>
     options.OperationFilter<RequestParameterDescriptionOperationFilter>();
     options.DocumentFilter<HealthChecksDocumentFilter>();
 });
-builder.Services.AddHealthChecks();
+builder.Services
+    .AddHealthChecks()
+    .AddSqlServer(
+        serviceProvider => serviceProvider.GetRequiredService<IConfiguration>().GetConnectionString("DefaultConnection")
+            ?? throw new InvalidOperationException("ConnectionStrings:DefaultConnection is required."),
+        healthQuery: "SELECT 1;",
+        name: "mssql",
+        failureStatus: HealthStatus.Unhealthy,
+        tags: new[] { "ready" });
 
 var app = builder.Build();
 
@@ -120,8 +130,14 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
-app.MapHealthChecks("/healthz");
-app.MapHealthChecks("/readyz");
+app.MapHealthChecks("/healthz", new HealthCheckOptions
+{
+    Predicate = _ => false
+});
+app.MapHealthChecks("/readyz", new HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("ready")
+});
 
 app.Run();
 

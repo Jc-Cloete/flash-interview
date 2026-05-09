@@ -72,7 +72,7 @@
 - Modify: `src/FlashInterview.Api/Program.cs`
 - Test: `tests/FlashInterview.Tests/ApiSurfaceTests.cs`
 
-- [ ] **Step 1: Write failing readiness tests**
+- [x] **Step 1: Write failing readiness tests**
 
 Add these tests to `tests/FlashInterview.Tests/ApiSurfaceTests.cs`:
 
@@ -123,7 +123,7 @@ if (connectionString is not null)
 }
 ```
 
-- [ ] **Step 2: Run the failing readiness test**
+- [x] **Step 2: Run the failing readiness test**
 
 Run:
 
@@ -133,7 +133,7 @@ dotnet test tests/FlashInterview.Tests/FlashInterview.Tests.csproj --filter "Ful
 
 Expected: FAIL because `/readyz` currently returns `200 OK`.
 
-- [ ] **Step 3: Implement tagged health checks**
+- [x] **Step 3: Implement tagged health checks**
 
 Add the SQL Server health-check package:
 
@@ -185,7 +185,7 @@ app.MapHealthChecks("/readyz", new HealthCheckOptions
 });
 ```
 
-- [ ] **Step 4: Run readiness tests**
+- [x] **Step 4: Run readiness tests**
 
 Run:
 
@@ -195,7 +195,7 @@ dotnet test tests/FlashInterview.Tests/FlashInterview.Tests.csproj --filter "Ful
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Run:
 

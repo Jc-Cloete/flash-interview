@@ -16,6 +16,30 @@ public sealed class ApiSurfaceTests
     private const string AdminApiKey = "test-admin-key";
 
     [Fact]
+    public async Task HealthEndpoint_ReturnsOkWithoutDatabaseCheck()
+    {
+        using var factory = new FlashInterviewApiFactory(new FakeSensitiveWordRepository());
+        using var client = factory.CreateHttpsClient();
+
+        using var response = await client.GetAsync("/healthz");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ReadinessEndpoint_ReturnsServiceUnavailableWhenSqlServerIsUnavailable()
+    {
+        using var factory = new FlashInterviewApiFactory(
+            new FakeSensitiveWordRepository(),
+            connectionString: "Server=127.0.0.1,1;Database=FlashInterview;User Id=sa;Password=bad;TrustServerCertificate=True;Encrypt=True;Connect Timeout=1");
+        using var client = factory.CreateHttpsClient();
+
+        using var response = await client.GetAsync("/readyz");
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+    }
+
+    [Fact]
     public async Task MaskEndpoint_MasksMessageUsingActiveRepositoryCandidates()
     {
         var repository = new FakeSensitiveWordRepository
@@ -256,7 +280,7 @@ public sealed class ApiSurfaceTests
         AssertOperation(paths, "/api/sensitive-words/{id}", "put", "200", "400", "401", "404");
         AssertOperation(paths, "/api/sensitive-words/{id}", "delete", "204", "401", "404");
         AssertOperation(paths, "/api/messages/mask", "post", "200", "400", "413", "429");
-        AssertOperation(paths, "/healthz", "get", "200", "503");
+        AssertOperation(paths, "/healthz", "get", "200");
         AssertOperation(paths, "/readyz", "get", "200", "503");
 
         var schemas = document.RootElement.GetProperty("components").GetProperty("schemas");
@@ -346,7 +370,8 @@ public sealed class ApiSurfaceTests
         string? adminApiKey = null,
         int? rateLimitPermitLimit = null,
         int? rateLimitWindowSeconds = null,
-        string environment = "Production") : WebApplicationFactory<Program>
+        string environment = "Production",
+        string? connectionString = null) : WebApplicationFactory<Program>
     {
         public HttpClient CreateHttpsClient()
         {
@@ -377,6 +402,11 @@ public sealed class ApiSurfaceTests
                     configuration["Security:MaskRateLimit:WindowSeconds"] = rateLimitWindowSeconds.Value.ToString();
                 }
 
+                if (connectionString is not null)
+                {
+                    configuration["ConnectionStrings:DefaultConnection"] = connectionString;
+                }
+
                 configurationBuilder.AddInMemoryCollection(configuration);
             });
             builder.ConfigureTestServices(services =>
@@ -393,6 +423,10 @@ public sealed class ApiSurfaceTests
         Assert.True(pathItem.TryGetProperty(method, out var operation), $"Expected Swagger operation '{method.ToUpperInvariant()} {path}'.");
 
         var responses = operation.GetProperty("responses");
+        Assert.Equal(
+            responseStatusCodes.Order(StringComparer.Ordinal).ToArray(),
+            responses.EnumerateObject().Select(response => response.Name).Order(StringComparer.Ordinal).ToArray());
+
         foreach (var responseStatusCode in responseStatusCodes)
         {
             Assert.True(

@@ -109,12 +109,26 @@ internal sealed class HealthChecksDocumentFilter : IDocumentFilter
     public void Apply(OpenApiDocument swaggerDoc, DocumentFilterContext context)
     {
         swaggerDoc.Paths ??= new OpenApiPaths();
-        swaggerDoc.Paths["/healthz"] = CreateHealthPath("Liveness health check.");
-        swaggerDoc.Paths["/readyz"] = CreateHealthPath("Readiness health check.");
+        swaggerDoc.Paths["/healthz"] = CreateHealthPath(
+            "Liveness health check.",
+            includeUnhealthyResponse: false);
+        swaggerDoc.Paths["/readyz"] = CreateHealthPath(
+            "Readiness health check.",
+            includeUnhealthyResponse: true);
     }
 
-    private static OpenApiPathItem CreateHealthPath(string description)
+    private static OpenApiPathItem CreateHealthPath(string description, bool includeUnhealthyResponse)
     {
+        var responses = new OpenApiResponses
+        {
+            ["200"] = new OpenApiResponse { Description = "The service is healthy." }
+        };
+
+        if (includeUnhealthyResponse)
+        {
+            responses["503"] = new OpenApiResponse { Description = "The service is unhealthy." };
+        }
+
         return new OpenApiPathItem
         {
             Operations = new Dictionary<HttpMethod, OpenApiOperation>
@@ -123,11 +137,7 @@ internal sealed class HealthChecksDocumentFilter : IDocumentFilter
                 {
                     Summary = description,
                     Description = "Returns service health status for deployment and container orchestration probes.",
-                    Responses = new OpenApiResponses
-                    {
-                        ["200"] = new OpenApiResponse { Description = "The service is healthy." },
-                        ["503"] = new OpenApiResponse { Description = "The service is unhealthy." }
-                    }
+                    Responses = responses
                 }
             }
         };
