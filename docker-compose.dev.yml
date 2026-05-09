@@ -10,6 +10,12 @@ services:
       - "1433:1433"
     volumes:
       - mssql-data:/var/opt/mssql
+    healthcheck:
+      test: [ "CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$${MSSQL_SA_PASSWORD}\" -C -Q 'SELECT 1' || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
 
   api:
     build:
@@ -17,11 +23,23 @@ services:
       dockerfile: src/FlashInterview.Api/Dockerfile.dev
     environment:
       ASPNETCORE_ENVIRONMENT: "Development"
+      DOTNET_WATCH_SUPPRESS_LAUNCH_BROWSER: "true"
       ConnectionStrings__DefaultConnection: "Server=mssql,1433;Database=FlashInterview;User Id=sa;Password=Your_strong_password123;TrustServerCertificate=True;"
-      Database__EnsureCreatedOnStartup: "true"
+      Database__ApplyMigrationsOnStartup: "true"
+      Database__SeedOnStartup: "true"
       Database__SeedFile: "/workspace/docs/sql_sensitive_list.txt"
+      Security__AdminApiKey: "local-dev-admin-key"
+      Security__MaskRateLimit__PermitLimit: "60"
+      Security__MaskRateLimit__WindowSeconds: "60"
     depends_on:
-      - mssql
+      mssql:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -fsS http://localhost:8080/readyz || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
     ports:
       - "7001:8080"
     volumes:
@@ -40,9 +58,12 @@ services:
       dockerfile: src/FlashInterview.Web/Dockerfile.dev
     environment:
       ASPNETCORE_ENVIRONMENT: "Development"
+      DOTNET_WATCH_SUPPRESS_LAUNCH_BROWSER: "true"
       SensitiveWordsApi__BaseUrl: "http://api:8080/"
+      SensitiveWordsApi__AdminApiKey: "local-dev-admin-key"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     ports:
       - "7002:8080"
     volumes:

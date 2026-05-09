@@ -8,30 +8,147 @@ namespace FlashInterview.Web.Controllers;
 public sealed class AdminController(SensitiveWordsApiClient apiClient) : Controller
 {
     [HttpGet]
-    public async Task<IActionResult> Index(CancellationToken cancellationToken)
+    public async Task<IActionResult> Index(
+        string? q,
+        string? category,
+        bool? isActive,
+        CancellationToken cancellationToken)
     {
-        var words = await apiClient.ListAsync(cancellationToken);
-        return View(new AdminViewModel { SensitiveWords = words?.Items ?? [] });
+        return View(await BuildViewModelAsync(q, category, isActive, cancellationToken));
     }
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Create(CreateSensitiveWordRequest request, CancellationToken cancellationToken)
+    public async Task<IActionResult> Create(
+        CreateSensitiveWordRequest request,
+        string? q,
+        string? category,
+        bool? isActive,
+        CancellationToken cancellationToken)
     {
         if (!ModelState.IsValid)
         {
-            return View("Index", new AdminViewModel { NewSensitiveWord = request });
+            return View("Index", await BuildViewModelAsync(q, category, isActive, cancellationToken, request));
         }
 
-        await apiClient.CreateAsync(request, cancellationToken);
-        return RedirectToAction(nameof(Index));
+        try
+        {
+            await apiClient.CreateAsync(request, cancellationToken);
+        }
+        catch (ApiValidationException exception)
+        {
+            AddValidationErrors(exception);
+            return View("Index", await BuildViewModelAsync(q, category, isActive, cancellationToken, request));
+        }
+
+        return RedirectToAction(nameof(Index), new { q, category, isActive });
     }
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
+    public async Task<IActionResult> Update(
+        Guid id,
+        UpdateSensitiveWordRequest request,
+        string? q,
+        string? category,
+        bool? isActive,
+        CancellationToken cancellationToken)
+    {
+        if (!ModelState.IsValid)
+        {
+            return View("Index", await BuildViewModelAsync(q, category, isActive, cancellationToken));
+        }
+
+        try
+        {
+            await apiClient.UpdateAsync(id, request, cancellationToken);
+        }
+        catch (ApiValidationException exception)
+        {
+            AddValidationErrors(exception);
+            return View("Index", await BuildViewModelAsync(q, category, isActive, cancellationToken));
+        }
+
+        return RedirectToAction(nameof(Index), new { q, category, isActive });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Deactivate(
+        Guid id,
+        string? q,
+        string? category,
+        bool? isActive,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var existing = await apiClient.GetAsync(id, cancellationToken);
+            if (existing is null)
+            {
+                return RedirectToAction(nameof(Index), new { q, category, isActive });
+            }
+
+            await apiClient.UpdateAsync(
+                id,
+                new UpdateSensitiveWordRequest(existing.Value, existing.Category, false),
+                cancellationToken);
+        }
+        catch (ApiValidationException exception)
+        {
+            AddValidationErrors(exception);
+            return View("Index", await BuildViewModelAsync(q, category, isActive, cancellationToken));
+        }
+
+        return RedirectToAction(nameof(Index), new { q, category, isActive });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Delete(
+        Guid id,
+        string? q,
+        string? category,
+        bool? isActive,
+        CancellationToken cancellationToken)
     {
         await apiClient.DeleteAsync(id, cancellationToken);
-        return RedirectToAction(nameof(Index));
+        return RedirectToAction(nameof(Index), new { q, category, isActive });
+    }
+
+    private async Task<AdminViewModel> BuildViewModelAsync(
+        string? q,
+        string? category,
+        bool? isActive,
+        CancellationToken cancellationToken,
+        CreateSensitiveWordRequest? newSensitiveWord = null)
+    {
+        var filter = new AdminFilterViewModel
+        {
+            Q = q,
+            Category = category,
+            IsActive = isActive
+        };
+        var words = await apiClient.ListAsync(
+            new SensitiveWordQuery(q, category, isActive),
+            cancellationToken);
+
+        return new AdminViewModel
+        {
+            SensitiveWords = words?.Items ?? [],
+            Filter = filter,
+            NewSensitiveWord = newSensitiveWord ?? new CreateSensitiveWordRequest("", "sql", true)
+        };
+    }
+
+    private void AddValidationErrors(ApiValidationException exception)
+    {
+        foreach (var (field, messages) in exception.Errors)
+        {
+            foreach (var message in messages)
+            {
+                ModelState.AddModelError(field, message);
+            }
+        }
     }
 }

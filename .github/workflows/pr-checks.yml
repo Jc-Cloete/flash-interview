@@ -24,9 +24,27 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
+    services:
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: "Your_strong_password123"
+          MSSQL_PID: "Developer"
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P Your_strong_password123 -C -Q 'SELECT 1' || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+
+      - name: Test release tag validator
+        run: python3 -m unittest discover -s .github/scripts -p "*_tests.py"
 
       - name: Set up .NET SDK
         uses: actions/setup-dotnet@v5
@@ -40,6 +58,8 @@ jobs:
         run: dotnet build FlashInterview.slnx --configuration Release --no-restore
 
       - name: Test
+        env:
+          FLASHINTERVIEW_TEST_MSSQL_MASTER: "Server=localhost,1433;Database=master;User Id=sa;Password=Your_strong_password123;TrustServerCertificate=True;Encrypt=True;Connect Timeout=5"
         run: >
           dotnet test FlashInterview.slnx
           --configuration Release

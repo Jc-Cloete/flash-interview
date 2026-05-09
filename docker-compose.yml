@@ -8,6 +8,12 @@ services:
       MSSQL_PID: "Express"
     volumes:
       - mssql-data:/var/opt/mssql
+    healthcheck:
+      test: [ "CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$${MSSQL_SA_PASSWORD}\" -C -Q 'SELECT 1' || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
     restart: unless-stopped
 
   api:
@@ -18,10 +24,21 @@ services:
       ASPNETCORE_ENVIRONMENT: "Production"
       ASPNETCORE_URLS: "http://+:8080"
       ConnectionStrings__DefaultConnection: "Server=mssql,1433;Database=FlashInterview;User Id=sa;Password=${MSSQL_SA_PASSWORD:-Your_strong_password123};TrustServerCertificate=True;"
-      Database__EnsureCreatedOnStartup: "${DATABASE_ENSURE_CREATED_ON_STARTUP:-false}"
+      Database__ApplyMigrationsOnStartup: "${DATABASE_APPLY_MIGRATIONS_ON_STARTUP:-false}"
+      Database__SeedOnStartup: "${DATABASE_SEED_ON_STARTUP:-false}"
       Database__SeedFile: "docs/sql_sensitive_list.txt"
+      Security__AdminApiKey: "${FLASHINTERVIEW_ADMIN_API_KEY:?Set FLASHINTERVIEW_ADMIN_API_KEY}"
+      Security__MaskRateLimit__PermitLimit: "${MASK_RATE_LIMIT_PERMIT_LIMIT:-60}"
+      Security__MaskRateLimit__WindowSeconds: "${MASK_RATE_LIMIT_WINDOW_SECONDS:-60}"
     depends_on:
-      - mssql
+      mssql:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -fsS http://localhost:8080/readyz || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
     ports:
       - "8080:8080"
     restart: unless-stopped
@@ -34,8 +51,10 @@ services:
       ASPNETCORE_ENVIRONMENT: "Production"
       ASPNETCORE_URLS: "http://+:8080"
       SensitiveWordsApi__BaseUrl: "http://api:8080/"
+      SensitiveWordsApi__AdminApiKey: "${FLASHINTERVIEW_ADMIN_API_KEY:?Set FLASHINTERVIEW_ADMIN_API_KEY}"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     ports:
       - "8081:8080"
     restart: unless-stopped

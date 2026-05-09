@@ -6,7 +6,35 @@
 
 <h1>Sensitive Words Admin</h1>
 
+<form asp-action="Index" method="get" class="mb-4">
+    <div class="row g-2">
+        <div class="col-md-4">
+            <label class="form-label" for="q">Search</label>
+            <input class="form-control" id="q" name="q" value="@Model.Filter.Q" maxlength="256" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label" for="category">Category</label>
+            <input class="form-control" id="category" name="category" value="@Model.Filter.Category" maxlength="64" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label" for="isActive">Status</label>
+            <select class="form-select" id="isActive" name="isActive">
+                <option value="" selected="@(Model.Filter.IsActive is null)">All</option>
+                <option value="true" selected="@(Model.Filter.IsActive == true)">Active</option>
+                <option value="false" selected="@(Model.Filter.IsActive == false)">Inactive</option>
+            </select>
+        </div>
+        <div class="col-md-2 d-flex align-items-end">
+            <button class="btn btn-outline-primary w-100" type="submit">Filter</button>
+        </div>
+    </div>
+</form>
+
 <form asp-action="Create" method="post" class="mb-4">
+    <input type="hidden" name="q" value="@Model.Filter.Q" />
+    <input type="hidden" name="category" value="@Model.Filter.Category" />
+    <input type="hidden" name="isActive" value="@Model.Filter.IsActive" />
+    <div asp-validation-summary="All" class="text-danger"></div>
     <div class="row g-2">
         <div class="col-md-5">
             <label class="form-label" for="Value">Word or phrase</label>
@@ -40,13 +68,42 @@
     <tbody>
     @foreach (var word in Model.SensitiveWords)
     {
+        var updateFormId = $"update-{word.Id:N}";
         <tr>
-            <td>@word.Value</td>
-            <td>@(word.Category ?? "-")</td>
-            <td>@(word.IsActive ? "Active" : "Inactive")</td>
+            <td>
+                <input class="form-control form-control-sm" form="@updateFormId" name="Value" value="@word.Value" maxlength="256" required />
+            </td>
+            <td>
+                <input class="form-control form-control-sm" form="@updateFormId" name="Category" value="@word.Category" maxlength="64" />
+            </td>
+            <td>
+                <div class="form-check">
+                    <input class="form-check-input" form="@updateFormId" id="active-@word.Id" name="IsActive" type="checkbox" value="true" checked="@word.IsActive" />
+                    <label class="form-check-label" for="active-@word.Id">Active</label>
+                </div>
+            </td>
             <td class="text-end">
-                <form asp-action="Delete" method="post">
+                <form asp-action="Update" method="post" id="@updateFormId" class="d-inline">
                     <input type="hidden" name="id" value="@word.Id" />
+                    <input type="hidden" name="q" value="@Model.Filter.Q" />
+                    <input type="hidden" name="category" value="@Model.Filter.Category" />
+                    <input type="hidden" name="isActive" value="@Model.Filter.IsActive" />
+                    <button class="btn btn-outline-primary btn-sm" type="submit">Save</button>
+                </form>
+                <form asp-action="Deactivate" method="post" class="d-inline">
+                    <input type="hidden" name="id" value="@word.Id" />
+                    <input type="hidden" name="value" value="@word.Value" />
+                    <input type="hidden" name="wordCategory" value="@word.Category" />
+                    <input type="hidden" name="q" value="@Model.Filter.Q" />
+                    <input type="hidden" name="category" value="@Model.Filter.Category" />
+                    <input type="hidden" name="isActive" value="@Model.Filter.IsActive" />
+                    <button class="btn btn-outline-secondary btn-sm" type="submit" disabled="@(!word.IsActive)">Deactivate</button>
+                </form>
+                <form asp-action="Delete" method="post" class="d-inline">
+                    <input type="hidden" name="id" value="@word.Id" />
+                    <input type="hidden" name="q" value="@Model.Filter.Q" />
+                    <input type="hidden" name="category" value="@Model.Filter.Category" />
+                    <input type="hidden" name="isActive" value="@Model.Filter.IsActive" />
                     <button class="btn btn-outline-danger btn-sm" type="submit">Delete</button>
                 </form>
             </td>

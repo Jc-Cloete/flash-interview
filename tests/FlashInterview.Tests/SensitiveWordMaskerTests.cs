@@ -5,6 +5,22 @@ namespace FlashInterview.Tests;
 public sealed class SensitiveWordMaskerTests
 {
     [Fact]
+    public void CompiledMasker_ReusesPreparedPatternsAcrossMessages()
+    {
+        var compiled = CompiledSensitiveWordMasker.FromCandidates(
+        [
+            new SensitiveWordCandidate("DROP"),
+            new SensitiveWordCandidate("SELECT * FROM")
+        ]);
+
+        var first = compiled.Mask("DROP table users");
+        var second = compiled.Mask("SELECT * FROM users");
+
+        Assert.Equal("**** table users", first.MaskedMessage);
+        Assert.Equal("************* users", second.MaskedMessage);
+    }
+
+    [Fact]
     public void Mask_ReplacesConfiguredWordsCaseInsensitively()
     {
         var masker = new SensitiveWordMasker();
@@ -46,6 +62,22 @@ public sealed class SensitiveWordMaskerTests
         Assert.Equal("************* users", result.MaskedMessage);
         Assert.Single(result.Matches);
         Assert.Equal("SELECT * FROM", result.Matches[0].Value);
+    }
+
+    [Fact]
+    public void Mask_UsesDeterministicTieBreakForSameLengthOverlaps()
+    {
+        var masker = new SensitiveWordMasker();
+        var words = new[]
+        {
+            new SensitiveWordCandidate("B C"),
+            new SensitiveWordCandidate("A B")
+        };
+
+        var result = masker.Mask("A B C", words);
+
+        Assert.Equal("*** C", result.MaskedMessage);
+        Assert.Equal(new SensitiveWordMatch("A B", 0, 3), Assert.Single(result.Matches));
     }
 
     [Fact]

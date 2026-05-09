@@ -53,10 +53,10 @@ docker compose -f docker-compose.dev.yml up --build
 - Keep masking behavior deterministic and testable in `FlashInterview.Application`.
 - Keep API surface tests isolated from MSSQL by replacing persistence with a fake repository unless the test is intentionally database-backed.
 - Keep MVC architecture tests guarding against direct database/infrastructure dependencies in `FlashInterview.Web`.
-- Add database migrations before production hardening; current `EnsureCreated` bootstrap is development convenience.
-- Do not log raw chat message bodies unless a future requirement explicitly allows it.
-- Keep Serilog request logs structured with application identity, method, path, status, and elapsed time; keep EF Core command noise at `Warning` in development/container settings.
-- Preserve global exception handlers that log unexpected failures server-side without returning stack traces to API or MVC clients.
+- Keep database bootstrap, migrations, seeding, health, and deployment behavior aligned with `README.md`.
+- Keep admin-key flow, masking rate limits/request-size limits, and API surface behavior aligned with `docs/spec.md`.
+- Preserve privacy-focused logging: do not log raw chat message bodies unless a future requirement explicitly allows it.
 - Avoid adding a direct database dependency to `FlashInterview.Web`.
 - Keep PR workflows non-publishing; publishing permissions belong only in release workflows.
 - Release assets should include enough deployment metadata to run published GHCR images without rebuilding from source.
+- Release tags are validated by `.github/scripts/validate_semver_tag.py`; keep release tags Docker-compatible SemVer and strictly greater than previous SemVer tags.

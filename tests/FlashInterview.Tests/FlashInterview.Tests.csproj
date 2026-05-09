@@ -23,6 +23,7 @@
     <ProjectReference Include="..\..\src\FlashInterview.Application\FlashInterview.Application.csproj" />
     <ProjectReference Include="..\..\src\FlashInterview.Api\FlashInterview.Api.csproj" />
     <ProjectReference Include="..\..\src\FlashInterview.Infrastructure\FlashInterview.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\FlashInterview.Web\FlashInterview.Web.csproj" Aliases="FlashInterviewWeb" />
   </ItemGroup>
 
 </Project>

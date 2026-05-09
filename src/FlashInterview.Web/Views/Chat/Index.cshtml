@@ -2,9 +2,22 @@
 
 @{
     ViewData["Title"] = "Mock Chat";
+    var examples = new[]
+    {
+        "SELECT * FROM users",
+        "drop table users",
+        "DROPLET should not mask DROP inside another word"
+    };
 }
 
 <h1>Mock Chat</h1>
+
+<div class="mb-3">
+    @foreach (var example in examples)
+    {
+        <button class="btn btn-outline-secondary btn-sm me-2 mb-2" type="button" data-example-message="@example">@example</button>
+    }
+</div>
 
 <form asp-action="Index" method="post" class="mb-4">
     <label class="form-label" for="message">Message</label>
@@ -19,4 +32,14 @@
         <p><strong>Original:</strong> @Model.Result.OriginalMessage</p>
         <p><strong>Masked:</strong> @Model.Result.MaskedMessage</p>
     </section>
+}
+
+@section Scripts {
+    <script>
+        for (const button of document.querySelectorAll("[data-example-message]")) {
+            button.addEventListener("click", () => {
+                document.getElementById("message").value = button.dataset.exampleMessage;
+            });
+        }
+    </script>
 }

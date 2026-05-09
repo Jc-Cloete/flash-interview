@@ -14,19 +14,40 @@ public sealed class DatabaseBootstrapper(
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        if (!bool.TryParse(configuration["Database:EnsureCreatedOnStartup"], out var ensureCreated) || !ensureCreated)
+        var applyMigrations = IsEnabled("Database:ApplyMigrationsOnStartup");
+        var legacyEnsureCreated = IsEnabled("Database:EnsureCreatedOnStartup");
+        var seedOnStartup = IsEnabled("Database:SeedOnStartup");
+
+        if (!applyMigrations && legacyEnsureCreated)
+        {
+            logger.LogWarning(
+                "Database:EnsureCreatedOnStartup is deprecated; applying migrations instead. Use Database:ApplyMigrationsOnStartup.");
+            applyMigrations = true;
+        }
+
+        if (!applyMigrations && !seedOnStartup)
         {
             return;
         }
 
-        logger.LogInformation("Ensuring database exists");
         using var scope = scopeFactory.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<FlashInterviewDbContext>();
-        await dbContext.Database.EnsureCreatedAsync(cancellationToken);
+
+        if (applyMigrations)
+        {
+            logger.LogInformation("Applying database migrations");
+            await dbContext.Database.MigrateAsync(cancellationToken);
+        }
+
+        if (!seedOnStartup)
+        {
+            return;
+        }
 
         var seedFile = configuration["Database:SeedFile"];
         if (string.IsNullOrWhiteSpace(seedFile))
         {
+            logger.LogWarning("Database seeding is enabled but Database:SeedFile is not configured");
             return;
         }
 
@@ -38,5 +59,10 @@ public sealed class DatabaseBootstrapper(
     public Task StopAsync(CancellationToken cancellationToken)
     {
         return Task.CompletedTask;
+    }
+
+    private bool IsEnabled(string key)
+    {
+        return bool.TryParse(configuration[key], out var enabled) && enabled;
     }
 }
