@@ -981,7 +981,7 @@ git commit -m "feat: add mock chat examples"
 **Files:**
 - Modify: `README.md`
 
-- [ ] **Step 1: Document operational choices**
+- [x] **Step 1: Document operational choices**
 
 In `README.md`, update these sections:
 
@@ -1010,7 +1010,7 @@ Under `Current Codebase Status`, update the final sentence to mention:
 The mask endpoint uses a cached compiled matcher that is invalidated after sensitive-word writes, so normal chat requests do not rebuild the active word list on every call.
 ```
 
-- [ ] **Step 2: Verify README contains the review-hardening claims**
+- [x] **Step 2: Verify README contains the review-hardening claims**
 
 Run:
 
@@ -1032,7 +1032,7 @@ PY
 
 Expected: `README hardening notes present`.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 Run:
 

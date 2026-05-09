@@ -343,10 +343,11 @@ The masking endpoint does not require the admin API key. It is rate limited and 
 
 Health endpoints:
 
-- `GET /healthz`
-- `GET /readyz`
+- `GET /healthz`: process liveness only; it does not require MSSQL.
+- `GET /readyz`: readiness check that verifies the API can reach MSSQL.
 
 Swagger UI is enabled in development on the API app at `http://localhost:7001/swagger`. The MVC frontend on `http://localhost:7002` does not host Swagger.
+Swagger UI and JSON endpoints are intentionally enabled only for Development in this submission. The OpenAPI generation is covered by tests; exposing Swagger in production would require an explicit code/configuration change and should be placed behind authenticated internal access if the hosting environment requires live API documentation.
 
 ## Test Coverage
 
@@ -355,9 +356,10 @@ The current xUnit suite covers:
 - Sensitive-word normalization, seed parsing, and deterministic masking edge cases.
 - REST API surface behavior, admin API-key protection, and mask rate limiting using `WebApplicationFactory` with a fake repository, so endpoint checks do not require MSSQL.
 - Optional MSSQL-backed API and preload integration coverage using isolated test databases when local SQL Server is available.
+- CI starts a SQL Server service container so MSSQL-backed CRUD, migration, and seed tests run in pull-request checks instead of being silently skipped.
 - MVC project architecture guards that prevent direct EF Core, SQL Server, or infrastructure references in the frontend.
 - MVC API-client behavior, including sending the admin API key only for Admin requests.
 
 ## Current Codebase Status
 
-The scaffold is compile-ready and includes core deterministic masking behavior, REST API surface tests, admin API-key protection for internal CRUD, rate limiting for the mask endpoint, completed basic Admin management workflows, frontend database-boundary checks, and an initial EF Core migration for the MSSQL schema. Database bootstrap uses controlled `MigrateAsync` startup behavior when explicitly enabled; production-style Compose leaves it disabled by default.
+The scaffold is compile-ready and includes core deterministic masking behavior, REST API surface tests, admin API-key protection for internal CRUD, rate limiting for the mask endpoint, completed basic Admin management workflows, frontend database-boundary checks, and an initial EF Core migration for the MSSQL schema. Database bootstrap uses controlled `MigrateAsync` startup behavior when explicitly enabled; production-style Compose leaves it disabled by default. The mask endpoint uses a cached compiled matcher that is invalidated after sensitive-word writes, so normal chat requests do not rebuild the active word list on every call.
