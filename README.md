@@ -214,6 +214,58 @@ Run everything with hot reload:
 docker compose -f docker-compose.dev.yml up --build
 ```
 
+## Performance Lab
+
+The performance lab is opt-in. It combines live observability with repeatable load reports:
+
+- Aspire Dashboard receives OpenTelemetry metrics and traces from the API and MVC web app.
+- API traces include ASP.NET request spans and EF Core database spans so database timing is visible.
+- API metrics include request rates, request duration, runtime counters, HTTP client metrics, and masking-specific counters/histograms.
+- BenchmarkDotNet measures the in-process masking engine without HTTP or SQL Server noise.
+- NBomber drives HTTP load against the running API and writes throughput, latency, percentile, success-rate, and saturation reports.
+
+Start the development stack with observability:
+
+```bash
+docker compose -f docker-compose.dev.yml -f docker-compose.observability.yml up --build
+```
+
+Open the dashboard:
+
+- Aspire Dashboard: `http://localhost:18888`
+- API: `http://localhost:7001`
+- Web: `http://localhost:7002`
+
+The observability Compose overlay binds dashboard ports to `127.0.0.1` and raises the mask rate limit for local performance-lab runs so capacity profiles measure API behavior rather than the default per-client throttle.
+
+Run masking microbenchmarks:
+
+```bash
+dotnet run -c Release --project tests/FlashInterview.PerformanceTests -- benchmark
+```
+
+Run the API load smoke test:
+
+```bash
+dotnet run --project tests/FlashInterview.PerformanceTests -- load --base-url http://localhost:7001 --admin-api-key local-dev-admin-key --smoke
+```
+
+Run the baseline local load profile:
+
+```bash
+dotnet run --project tests/FlashInterview.PerformanceTests -- load --base-url http://localhost:7001 --admin-api-key local-dev-admin-key --profile baseline
+```
+
+Run the capacity ramp profile:
+
+```bash
+dotnet run --project tests/FlashInterview.PerformanceTests -- load --base-url http://localhost:7001 --admin-api-key local-dev-admin-key --profile capacity
+```
+
+Use NBomber reports for high-level throughput, request latency, percentiles, success rate, and saturation points. Use the Aspire Dashboard during the same run to inspect API request metrics, trace waterfalls, MVC-to-API calls, EF Core database spans, runtime counters, and masking-specific histograms.
+
+Reports are written to `artifacts/performance/`. BenchmarkDotNet writes to `BenchmarkDotNet.Artifacts/`. Both folders are local artifacts and are not committed.
+
 Development URLs:
 
 - API: `http://localhost:7001`

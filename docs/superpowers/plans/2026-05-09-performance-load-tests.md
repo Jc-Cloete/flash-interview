@@ -768,7 +768,7 @@ git commit -m "test: add api load and capacity profiles"
 **Files:**
 - Modify: `README.md`
 
-- [ ] **Step 1: Add README performance lab section**
+- [x] **Step 1: Add README performance lab section**
 
 Add this section after the Local Development test commands:
 
@@ -824,7 +824,7 @@ Use NBomber reports for high-level throughput, request latency, percentiles, suc
 Reports are written to `artifacts/performance/`. BenchmarkDotNet writes to `BenchmarkDotNet.Artifacts/`. Both folders are local artifacts and are not committed.
 ```
 
-- [ ] **Step 2: Verify README command references**
+- [x] **Step 2: Verify README command references**
 
 Run:
 
@@ -834,7 +834,7 @@ rg "Performance Lab|Aspire Dashboard|OpenTelemetry|FlashInterview.PerformanceTes
 
 Expected: output shows README guidance, ignore rules, observability compose config, telemetry setup, and performance project files.
 
-- [ ] **Step 3: Run full repository verification**
+- [x] **Step 3: Run full repository verification**
 
 Run:
 
@@ -846,7 +846,7 @@ dotnet test FlashInterview.slnx --no-build
 
 Expected: restore, build, and tests pass. Optional MSSQL-backed tests may skip locally if SQL Server is unavailable.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 Run:
 
