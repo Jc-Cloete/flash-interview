@@ -17,6 +17,7 @@ services:
       dockerfile: src/FlashInterview.Api/Dockerfile.dev
     environment:
       ASPNETCORE_ENVIRONMENT: "Development"
+      DOTNET_WATCH_SUPPRESS_LAUNCH_BROWSER: "true"
       ConnectionStrings__DefaultConnection: "Server=mssql,1433;Database=FlashInterview;User Id=sa;Password=Your_strong_password123;TrustServerCertificate=True;"
       Database__ApplyMigrationsOnStartup: "true"
       Database__SeedOnStartup: "true"
@@ -44,6 +45,7 @@ services:
       dockerfile: src/FlashInterview.Web/Dockerfile.dev
     environment:
       ASPNETCORE_ENVIRONMENT: "Development"
+      DOTNET_WATCH_SUPPRESS_LAUNCH_BROWSER: "true"
       SensitiveWordsApi__BaseUrl: "http://api:8080/"
       SensitiveWordsApi__AdminApiKey: "local-dev-admin-key"
     depends_on:
