@@ -1,4 +1,5 @@
 using FlashInterview.Api.Security;
+using FlashInterview.Api.SensitiveWords;
 using FlashInterview.Api.OpenApi;
 using FlashInterview.Application.SensitiveWords;
 using FlashInterview.Infrastructure;
@@ -23,7 +24,7 @@ builder.Host.UseSerilog((context, loggerConfiguration) =>
 });
 
 builder.Services.AddFlashInterviewInfrastructure(builder.Configuration);
-builder.Services.AddSingleton<SensitiveWordMasker>();
+builder.Services.AddSingleton<ISensitiveWordMatcherCache, SensitiveWordMatcherCache>();
 builder.Services.AddControllers();
 builder.Services
     .AddAuthentication(AdminApiKeyAuthenticationHandler.SchemeName)

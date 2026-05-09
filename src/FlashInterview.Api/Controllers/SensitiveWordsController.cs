@@ -1,3 +1,4 @@
+using FlashInterview.Api.SensitiveWords;
 using FlashInterview.Application.SensitiveWords;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -8,7 +9,9 @@ namespace FlashInterview.Api.Controllers;
 [ApiController]
 [Route("api/sensitive-words")]
 [Authorize(Policy = "AdminApiKey")]
-public sealed class SensitiveWordsController(ISensitiveWordRepository repository) : ControllerBase
+public sealed class SensitiveWordsController(
+    ISensitiveWordRepository repository,
+    ISensitiveWordMatcherCache matcherCache) : ControllerBase
 {
     [HttpPost]
     [SwaggerOperation(Summary = "Create a sensitive word", Description = "Creates a new sensitive word for internal administration.")]
@@ -22,6 +25,7 @@ public sealed class SensitiveWordsController(ISensitiveWordRepository repository
         try
         {
             var created = await repository.CreateAsync(request, cancellationToken);
+            matcherCache.Invalidate();
             return CreatedAtAction(nameof(Get), new { id = created.Id }, created);
         }
         catch (DuplicateSensitiveWordException)
@@ -72,6 +76,11 @@ public sealed class SensitiveWordsController(ISensitiveWordRepository repository
         try
         {
             var result = await repository.UpdateAsync(id, request, cancellationToken);
+            if (result is not null)
+            {
+                matcherCache.Invalidate();
+            }
+
             return result is null ? NotFound() : Ok(result);
         }
         catch (DuplicateSensitiveWordException)
@@ -89,6 +98,11 @@ public sealed class SensitiveWordsController(ISensitiveWordRepository repository
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {
         var deleted = await repository.DeleteAsync(id, cancellationToken);
+        if (deleted)
+        {
+            matcherCache.Invalidate();
+        }
+
         return deleted ? NoContent() : NotFound();
     }
 }

@@ -1,3 +1,4 @@
+using FlashInterview.Api.SensitiveWords;
 using FlashInterview.Application.SensitiveWords;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -7,9 +8,7 @@ namespace FlashInterview.Api.Controllers;
 
 [ApiController]
 [Route("api/messages")]
-public sealed class MessagesController(
-    ISensitiveWordRepository repository,
-    SensitiveWordMasker masker) : ControllerBase
+public sealed class MessagesController(ISensitiveWordMatcherCache matcherCache) : ControllerBase
 {
     [HttpPost("mask")]
     [EnableRateLimiting("MaskMessage")]
@@ -23,8 +22,8 @@ public sealed class MessagesController(
         [FromBody] MaskMessageRequest request,
         CancellationToken cancellationToken)
     {
-        var candidates = await repository.ListActiveCandidatesAsync(cancellationToken);
-        var result = masker.Mask(request.Message, candidates);
+        var matcher = await matcherCache.GetAsync(cancellationToken);
+        var result = matcher.Mask(request.Message);
 
         return Ok(new MaskMessageResponse(result.OriginalMessage, result.MaskedMessage, result.Matches));
     }

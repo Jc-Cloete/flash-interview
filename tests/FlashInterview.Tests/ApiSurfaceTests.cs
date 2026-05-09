@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using FlashInterview.Api.SensitiveWords;
 using FlashInterview.Application.SensitiveWords;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -66,6 +67,137 @@ public sealed class ApiSurfaceTests
         Assert.Equal(0, root.GetProperty("matches")[0].GetProperty("start").GetInt32());
         Assert.Equal(4, root.GetProperty("matches")[0].GetProperty("end").GetInt32());
         Assert.Equal("SELECT * FROM", root.GetProperty("matches")[1].GetProperty("value").GetString());
+    }
+
+    [Fact]
+    public async Task MaskEndpoint_ReusesCachedActiveCandidatesAcrossRepeatedCallsAndRefreshesAfterCreateInvalidation()
+    {
+        var repository = new FakeSensitiveWordRepository
+        {
+            ActiveCandidates = [new SensitiveWordCandidate("DROP")]
+        };
+
+        using var factory = new FlashInterviewApiFactory(repository, AdminApiKey);
+        using var client = factory.CreateHttpsClient();
+
+        using var firstResponse = await client.PostAsJsonAsync("/api/messages/mask", new MaskMessageRequest("DROP SELECT"));
+
+        firstResponse.EnsureSuccessStatusCode();
+        Assert.Equal("**** SELECT", await ReadMaskedMessageAsync(firstResponse));
+
+        repository.ActiveCandidates = [new SensitiveWordCandidate("SELECT")];
+
+        using var secondResponse = await client.PostAsJsonAsync("/api/messages/mask", new MaskMessageRequest("DROP SELECT"));
+
+        secondResponse.EnsureSuccessStatusCode();
+        Assert.Equal("**** SELECT", await ReadMaskedMessageAsync(secondResponse));
+        Assert.Equal(1, repository.ListActiveCandidatesCallCount);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/sensitive-words")
+        {
+            Content = JsonContent.Create(new CreateSensitiveWordRequest("SELECT", "sql"))
+        };
+        request.Headers.Add("X-Admin-Api-Key", AdminApiKey);
+
+        using var createResponse = await client.SendAsync(request);
+
+        createResponse.EnsureSuccessStatusCode();
+
+        using var thirdResponse = await client.PostAsJsonAsync("/api/messages/mask", new MaskMessageRequest("DROP SELECT"));
+
+        thirdResponse.EnsureSuccessStatusCode();
+        Assert.Equal("DROP ******", await ReadMaskedMessageAsync(thirdResponse));
+        Assert.Equal(2, repository.ListActiveCandidatesCallCount);
+    }
+
+    [Fact]
+    public async Task MaskEndpoint_RefreshesCachedActiveCandidatesAfterUpdateInvalidation()
+    {
+        var repository = new FakeSensitiveWordRepository
+        {
+            ActiveCandidates = [new SensitiveWordCandidate("DROP")]
+        };
+
+        using var factory = new FlashInterviewApiFactory(repository, AdminApiKey);
+        using var client = factory.CreateHttpsClient();
+
+        using var firstResponse = await client.PostAsJsonAsync("/api/messages/mask", new MaskMessageRequest("DROP SELECT"));
+
+        firstResponse.EnsureSuccessStatusCode();
+        Assert.Equal("**** SELECT", await ReadMaskedMessageAsync(firstResponse));
+
+        repository.ActiveCandidates = [new SensitiveWordCandidate("SELECT")];
+        client.DefaultRequestHeaders.Add("X-Admin-Api-Key", AdminApiKey);
+
+        using var updateResponse = await client.PutAsJsonAsync(
+            "/api/sensitive-words/11111111-1111-1111-1111-111111111111",
+            new UpdateSensitiveWordRequest("SELECT", "sql", true));
+
+        updateResponse.EnsureSuccessStatusCode();
+
+        using var secondResponse = await client.PostAsJsonAsync("/api/messages/mask", new MaskMessageRequest("DROP SELECT"));
+
+        secondResponse.EnsureSuccessStatusCode();
+        Assert.Equal("DROP ******", await ReadMaskedMessageAsync(secondResponse));
+        Assert.Equal(2, repository.ListActiveCandidatesCallCount);
+    }
+
+    [Fact]
+    public async Task MaskEndpoint_RefreshesCachedActiveCandidatesAfterDeleteInvalidation()
+    {
+        var repository = new FakeSensitiveWordRepository
+        {
+            ActiveCandidates = [new SensitiveWordCandidate("DROP")],
+            DeleteResult = true
+        };
+
+        using var factory = new FlashInterviewApiFactory(repository, AdminApiKey);
+        using var client = factory.CreateHttpsClient();
+
+        using var firstResponse = await client.PostAsJsonAsync("/api/messages/mask", new MaskMessageRequest("DROP SELECT"));
+
+        firstResponse.EnsureSuccessStatusCode();
+        Assert.Equal("**** SELECT", await ReadMaskedMessageAsync(firstResponse));
+
+        repository.ActiveCandidates = [new SensitiveWordCandidate("SELECT")];
+        using var request = new HttpRequestMessage(
+            HttpMethod.Delete,
+            "/api/sensitive-words/11111111-1111-1111-1111-111111111111");
+        request.Headers.Add("X-Admin-Api-Key", AdminApiKey);
+
+        using var deleteResponse = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
+
+        using var secondResponse = await client.PostAsJsonAsync("/api/messages/mask", new MaskMessageRequest("DROP SELECT"));
+
+        secondResponse.EnsureSuccessStatusCode();
+        Assert.Equal("DROP ******", await ReadMaskedMessageAsync(secondResponse));
+        Assert.Equal(2, repository.ListActiveCandidatesCallCount);
+    }
+
+    [Fact]
+    public async Task SensitiveWordMatcherCache_DoesNotPublishRefreshThatStartedBeforeInvalidation()
+    {
+        var repository = new BlockingActiveCandidatesRepository([new SensitiveWordCandidate("DROP")]);
+        using var serviceProvider = new ServiceCollection()
+            .AddSingleton<ISensitiveWordRepository>(repository)
+            .BuildServiceProvider();
+        var cache = new SensitiveWordMatcherCache(serviceProvider.GetRequiredService<IServiceScopeFactory>());
+
+        var inFlightRefresh = cache.GetAsync(CancellationToken.None);
+        await repository.WaitForRefreshToReadCandidatesAsync();
+
+        repository.ActiveCandidates = [new SensitiveWordCandidate("SELECT")];
+        cache.Invalidate();
+        repository.AllowRefreshToComplete();
+
+        var staleMatcherForInFlightRequest = await inFlightRefresh;
+        var refreshedMatcher = await cache.GetAsync(CancellationToken.None);
+
+        Assert.Equal("**** SELECT", staleMatcherForInFlightRequest.Mask("DROP SELECT").MaskedMessage);
+        Assert.Equal("DROP ******", refreshedMatcher.Mask("DROP SELECT").MaskedMessage);
+        Assert.Equal(2, repository.ListActiveCandidatesCallCount);
     }
 
     [Theory]
@@ -365,6 +497,12 @@ public sealed class ApiSurfaceTests
         Assert.NotEmpty(fieldErrors.EnumerateArray());
     }
 
+    private static async Task<string?> ReadMaskedMessageAsync(HttpResponseMessage response)
+    {
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        return document.RootElement.GetProperty("maskedMessage").GetString();
+    }
+
     private sealed class FlashInterviewApiFactory(
         ISensitiveWordRepository repository,
         string? adminApiKey = null,
@@ -457,7 +595,7 @@ public sealed class ApiSurfaceTests
 
     private sealed class FakeSensitiveWordRepository : ISensitiveWordRepository
     {
-        public IReadOnlyList<SensitiveWordCandidate> ActiveCandidates { get; init; } = [];
+        public IReadOnlyList<SensitiveWordCandidate> ActiveCandidates { get; set; } = [];
 
         public PagedResponse<SensitiveWordDto> ListResult { get; init; } =
             new([], 1, 50, 0);
@@ -467,6 +605,10 @@ public sealed class ApiSurfaceTests
         public bool DuplicateOnCreate { get; init; }
 
         public bool DuplicateOnUpdate { get; init; }
+
+        public bool DeleteResult { get; init; }
+
+        public int ListActiveCandidatesCallCount { get; private set; }
 
         public Task<SensitiveWordDto> CreateAsync(CreateSensitiveWordRequest request, CancellationToken cancellationToken)
         {
@@ -521,12 +663,73 @@ public sealed class ApiSurfaceTests
 
         public Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken)
         {
-            return Task.FromResult(false);
+            return Task.FromResult(DeleteResult);
         }
 
         public Task<IReadOnlyList<SensitiveWordCandidate>> ListActiveCandidatesAsync(CancellationToken cancellationToken)
         {
+            ListActiveCandidatesCallCount++;
             return Task.FromResult(ActiveCandidates);
+        }
+    }
+
+    private sealed class BlockingActiveCandidatesRepository(
+        IReadOnlyList<SensitiveWordCandidate> activeCandidates) : ISensitiveWordRepository
+    {
+        private readonly TaskCompletionSource refreshReadCandidates = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource allowRefreshToComplete = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public IReadOnlyList<SensitiveWordCandidate> ActiveCandidates { get; set; } = activeCandidates;
+
+        public int ListActiveCandidatesCallCount { get; private set; }
+
+        public Task<SensitiveWordDto> CreateAsync(CreateSensitiveWordRequest request, CancellationToken cancellationToken)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<PagedResponse<SensitiveWordDto>> ListAsync(SensitiveWordQuery query, CancellationToken cancellationToken)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<SensitiveWordDto?> GetAsync(Guid id, CancellationToken cancellationToken)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<SensitiveWordDto?> UpdateAsync(Guid id, UpdateSensitiveWordRequest request, CancellationToken cancellationToken)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken)
+        {
+            throw new NotSupportedException();
+        }
+
+        public async Task<IReadOnlyList<SensitiveWordCandidate>> ListActiveCandidatesAsync(CancellationToken cancellationToken)
+        {
+            ListActiveCandidatesCallCount++;
+            var candidates = ActiveCandidates;
+
+            if (ListActiveCandidatesCallCount == 1)
+            {
+                refreshReadCandidates.SetResult();
+                await allowRefreshToComplete.Task.WaitAsync(cancellationToken);
+            }
+
+            return candidates;
+        }
+
+        public Task WaitForRefreshToReadCandidatesAsync()
+        {
+            return refreshReadCandidates.Task;
+        }
+
+        public void AllowRefreshToComplete()
+        {
+            allowRefreshToComplete.SetResult();
         }
     }
 }

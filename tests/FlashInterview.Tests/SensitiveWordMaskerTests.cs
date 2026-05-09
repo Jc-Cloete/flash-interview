@@ -5,6 +5,22 @@ namespace FlashInterview.Tests;
 public sealed class SensitiveWordMaskerTests
 {
     [Fact]
+    public void CompiledMasker_ReusesPreparedPatternsAcrossMessages()
+    {
+        var compiled = CompiledSensitiveWordMasker.FromCandidates(
+        [
+            new SensitiveWordCandidate("DROP"),
+            new SensitiveWordCandidate("SELECT * FROM")
+        ]);
+
+        var first = compiled.Mask("DROP table users");
+        var second = compiled.Mask("SELECT * FROM users");
+
+        Assert.Equal("**** table users", first.MaskedMessage);
+        Assert.Equal("************* users", second.MaskedMessage);
+    }
+
+    [Fact]
     public void Mask_ReplacesConfiguredWordsCaseInsensitively()
     {
         var masker = new SensitiveWordMasker();

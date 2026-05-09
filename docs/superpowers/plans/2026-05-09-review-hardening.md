@@ -290,7 +290,7 @@ git commit -m "ci: run mssql integration tests"
 - Test: `tests/FlashInterview.Tests/SensitiveWordMaskerTests.cs`
 - Test: `tests/FlashInterview.Tests/ApiSurfaceTests.cs`
 
-- [ ] **Step 1: Write compiled matcher tests**
+- [x] **Step 1: Write compiled matcher tests**
 
 Add to `tests/FlashInterview.Tests/SensitiveWordMaskerTests.cs`:
 
@@ -312,7 +312,7 @@ public void CompiledMasker_ReusesPreparedPatternsAcrossMessages()
 }
 ```
 
-- [ ] **Step 2: Run the failing compiled matcher test**
+- [x] **Step 2: Run the failing compiled matcher test**
 
 Run:
 
@@ -322,7 +322,7 @@ dotnet test tests/FlashInterview.Tests/FlashInterview.Tests.csproj --filter "Ful
 
 Expected: FAIL because `CompiledSensitiveWordMasker` does not exist.
 
-- [ ] **Step 3: Add compiled matcher**
+- [x] **Step 3: Add compiled matcher**
 
 Create `src/FlashInterview.Application/SensitiveWords/CompiledSensitiveWordMasker.cs`:
 
@@ -446,7 +446,7 @@ public sealed class SensitiveWordMasker
 }
 ```
 
-- [ ] **Step 4: Add API matcher cache**
+- [x] **Step 4: Add API matcher cache**
 
 Create `src/FlashInterview.Api/SensitiveWords/ISensitiveWordMatcherCache.cs`:
 
@@ -512,7 +512,7 @@ public sealed class SensitiveWordMatcherCache(IServiceScopeFactory scopeFactory)
 }
 ```
 
-- [ ] **Step 5: Wire cache into API**
+- [x] **Step 5: Wire cache into API**
 
 In `src/FlashInterview.Api/Program.cs`, add:
 
@@ -588,7 +588,7 @@ matcherCache.Invalidate();
 
 For delete, call it only when `deleted` is true.
 
-- [ ] **Step 6: Run masking and API tests**
+- [x] **Step 6: Run masking and API tests**
 
 Run:
 
@@ -598,7 +598,7 @@ dotnet test tests/FlashInterview.Tests/FlashInterview.Tests.csproj --filter "Ful
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 Run:
 
