@@ -32,6 +32,11 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Validate release tag
+        run: python3 .github/scripts/validate_semver_tag.py "${{ github.event.release.tag_name || inputs.tag }}"
 
       - name: Set up .NET SDK
         uses: actions/setup-dotnet@v5

@@ -60,3 +60,4 @@ docker compose -f docker-compose.dev.yml up --build
 - Avoid adding a direct database dependency to `FlashInterview.Web`.
 - Keep PR workflows non-publishing; publishing permissions belong only in release workflows.
 - Release assets should include enough deployment metadata to run published GHCR images without rebuilding from source.
+- Release tags are validated by `.github/scripts/validate_semver_tag.py`; keep release tags Docker-compatible SemVer and strictly greater than previous SemVer tags.
