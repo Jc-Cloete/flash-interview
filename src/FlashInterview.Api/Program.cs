@@ -1,6 +1,7 @@
 using FlashInterview.Api.Health;
 using FlashInterview.Api.Security;
 using FlashInterview.Api.SensitiveWords;
+using FlashInterview.Api.Telemetry;
 using FlashInterview.Api.OpenApi;
 using FlashInterview.Application.SensitiveWords;
 using FlashInterview.Infrastructure;
@@ -40,7 +41,7 @@ builder.Services
             .AddAspNetCoreInstrumentation()
             .AddHttpClientInstrumentation()
             .AddRuntimeInstrumentation()
-            .AddMeter("FlashInterview.Api.Masking")
+            .AddMeter(MaskingMetrics.MeterName)
             .AddMeter("Microsoft.AspNetCore.Hosting")
             .AddMeter("Microsoft.AspNetCore.Server.Kestrel")
             .AddMeter("System.Net.Http");
@@ -74,6 +75,7 @@ builder.Services
 
 builder.Services.AddFlashInterviewInfrastructure(builder.Configuration);
 builder.Services.AddSingleton<ISensitiveWordMatcherCache, SensitiveWordMatcherCache>();
+builder.Services.AddSingleton<MaskingMetrics>();
 builder.Services.AddControllers();
 builder.Services
     .AddAuthentication(AdminApiKeyAuthenticationHandler.SchemeName)

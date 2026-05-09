@@ -269,7 +269,7 @@ git commit -m "feat: add open telemetry dashboard instrumentation"
 - Modify: `src/FlashInterview.Api/Controllers/MessagesController.cs`
 - Test: `tests/FlashInterview.Tests/ApiSurfaceTests.cs`
 
-- [ ] **Step 1: Add a focused API test for metric-safe masking**
+- [x] **Step 1: Add a focused API test for metric-safe masking**
 
 Add this test to `tests/FlashInterview.Tests/ApiSurfaceTests.cs`:
 
@@ -294,7 +294,7 @@ public async Task MaskEndpoint_ReturnsMaskedMessage_WhenMetricsAreRegistered()
 
 Expected: this passes before metrics are added and remains a guard that adding metrics does not change API behavior.
 
-- [ ] **Step 2: Add masking metric recorder**
+- [x] **Step 2: Add masking metric recorder**
 
 Create `src/FlashInterview.Api/Telemetry/MaskingMetrics.cs`:
 
@@ -343,7 +343,7 @@ public sealed class MaskingMetrics
 }
 ```
 
-- [ ] **Step 3: Register and use masking metrics**
+- [x] **Step 3: Register and use masking metrics**
 
 In `src/FlashInterview.Api/Program.cs`, add:
 
@@ -388,7 +388,7 @@ maskingMetrics.Record(result, elapsed);
 
 Expected: metrics record dimensions that are safe for privacy. Do not record raw message text.
 
-- [ ] **Step 4: Verify focused API test**
+- [x] **Step 4: Verify focused API test**
 
 Run:
 
@@ -398,7 +398,7 @@ dotnet test tests/FlashInterview.Tests/FlashInterview.Tests.csproj --filter "Ful
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Run:
 

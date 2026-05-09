@@ -70,6 +70,26 @@ public sealed class ApiSurfaceTests
     }
 
     [Fact]
+    public async Task MaskEndpoint_ReturnsMaskedMessage_WhenMetricsAreRegistered()
+    {
+        var repository = new FakeSensitiveWordRepository
+        {
+            ActiveCandidates = [new SensitiveWordCandidate("SELECT")]
+        };
+
+        using var factory = new FlashInterviewApiFactory(repository);
+        using var client = factory.CreateHttpsClient();
+
+        using var response = await client.PostAsJsonAsync("/api/messages/mask", new MaskMessageRequest("SELECT value"));
+
+        response.EnsureSuccessStatusCode();
+        var result = await response.Content.ReadFromJsonAsync<MaskMessageResponse>();
+
+        Assert.NotNull(result);
+        Assert.Equal("****** value", result.MaskedMessage);
+    }
+
+    [Fact]
     public async Task MaskEndpoint_ReusesCachedActiveCandidatesAcrossRepeatedCallsAndRefreshesAfterCreateInvalidation()
     {
         var repository = new FakeSensitiveWordRepository

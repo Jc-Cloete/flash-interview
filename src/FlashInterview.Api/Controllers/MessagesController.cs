@@ -1,4 +1,5 @@
 using FlashInterview.Api.SensitiveWords;
+using FlashInterview.Api.Telemetry;
 using FlashInterview.Application.SensitiveWords;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -8,7 +9,9 @@ namespace FlashInterview.Api.Controllers;
 
 [ApiController]
 [Route("api/messages")]
-public sealed class MessagesController(ISensitiveWordMatcherCache matcherCache) : ControllerBase
+public sealed class MessagesController(
+    ISensitiveWordMatcherCache matcherCache,
+    MaskingMetrics maskingMetrics) : ControllerBase
 {
     [HttpPost("mask")]
     [EnableRateLimiting("MaskMessage")]
@@ -23,7 +26,10 @@ public sealed class MessagesController(ISensitiveWordMatcherCache matcherCache) 
         CancellationToken cancellationToken)
     {
         var matcher = await matcherCache.GetAsync(cancellationToken);
+        var startedAt = TimeProvider.System.GetTimestamp();
         var result = matcher.Mask(request.Message);
+        var elapsed = TimeProvider.System.GetElapsedTime(startedAt);
+        maskingMetrics.Record(result, elapsed);
 
         return Ok(new MaskMessageResponse(result.OriginalMessage, result.MaskedMessage, result.Matches));
     }
