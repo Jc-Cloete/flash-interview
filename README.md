@@ -11,20 +11,183 @@ The service stores configurable sensitive words in MSSQL and exposes:
 
 The MVC frontend must not connect directly to the database. Database access belongs to the API/infrastructure layer only.
 
+## Architecture Guide
+
+### Runtime Components
+
+```mermaid
+flowchart LR
+    Browser["Browser"]
+    Web["FlashInterview.Web<br/>ASP.NET Core MVC<br/>localhost:7002"]
+    Api["FlashInterview.Api<br/>ASP.NET Core Web API<br/>localhost:7001"]
+    App["FlashInterview.Application<br/>contracts + masking logic"]
+    Infra["FlashInterview.Infrastructure<br/>EF Core repository + migrations + seed"]
+    Sql["MSSQL<br/>SensitiveWords table<br/>localhost:1433"]
+    Swagger["Swagger UI<br/>/swagger on API only"]
+
+    Browser -->|"Admin + Mock Chat pages"| Web
+    Browser -->|"Swagger UI"| Swagger
+    Swagger --> Api
+    Web -->|"HTTP API calls"| Api
+    Api --> App
+    Api --> Infra
+    Infra --> Sql
+```
+
+### Code Boundaries
+
+```mermaid
+flowchart TB
+    WebLayer["FlashInterview.Web<br/>MVC controllers, views, API client"]
+    ApiLayer["FlashInterview.Api<br/>REST controllers, auth, rate limits, Swagger"]
+    ApplicationLayer["FlashInterview.Application<br/>DTOs, requests, repository interface, masker, seed parser"]
+    InfrastructureLayer["FlashInterview.Infrastructure<br/>DbContext, EF repository, migrations, bootstrap, seeder"]
+    Database["MSSQL"]
+
+    WebLayer -->|"uses application contracts only"| ApplicationLayer
+    WebLayer -->|"calls over HTTP"| ApiLayer
+    ApiLayer --> ApplicationLayer
+    ApiLayer --> InfrastructureLayer
+    InfrastructureLayer --> ApplicationLayer
+    InfrastructureLayer --> Database
+
+    WebLayer -. "must not reference" .-> InfrastructureLayer
+    WebLayer -. "must not connect to" .-> Database
+```
+
+### Admin Data Flow
+
+```mermaid
+sequenceDiagram
+    participant User as Admin user
+    participant Web as FlashInterview.Web
+    participant Api as FlashInterview.Api
+    participant Repo as SqlSensitiveWordRepository
+    participant Db as MSSQL
+
+    User->>Web: Open /Admin or submit create/edit/delete/deactivate
+    Web->>Api: HTTP request to /api/sensitive-words with X-Admin-Api-Key
+    Api->>Api: Validate API key, request model, duplicate rules
+    Api->>Repo: Create/List/Get/Update/Delete
+    Repo->>Db: EF Core query/command
+    Db-->>Repo: Rows affected or result set
+    Repo-->>Api: SensitiveWordDto or PagedResponse
+    Api-->>Web: JSON response or validation problem
+    Web-->>User: Render Admin page with data or validation errors
+```
+
+### Mock Chat Data Flow
+
+```mermaid
+sequenceDiagram
+    participant User as Chat user
+    participant Web as FlashInterview.Web
+    participant Api as FlashInterview.Api
+    participant Repo as Repository
+    participant Masker as SensitiveWordMasker
+    participant Db as MSSQL
+
+    User->>Web: Submit message on Mock Chat
+    Web->>Api: POST /api/messages/mask
+    Api->>Api: Apply request-size limit and rate limit
+    Api->>Repo: List active sensitive-word candidates
+    Repo->>Db: SELECT active values
+    Db-->>Repo: Active values
+    Api->>Masker: Mask message with longest-match deterministic rules
+    Masker-->>Api: Original message, masked message, matches
+    Api-->>Web: MaskMessageResponse
+    Web-->>User: Display original and masked message
+```
+
+### Startup And Seed Flow
+
+```mermaid
+sequenceDiagram
+    participant Compose as Docker Compose
+    participant Api as API container
+    participant Bootstrap as DatabaseBootstrapper
+    participant Ef as EF Core
+    participant Seeder as SensitiveWordSeeder
+    participant Db as MSSQL
+    participant File as docs/sql_sensitive_list.txt
+
+    Compose->>Api: Start with environment settings
+    Api->>Bootstrap: Hosted service StartAsync
+    alt Database__ApplyMigrationsOnStartup=true
+        Bootstrap->>Ef: Database.MigrateAsync()
+        Ef->>Db: Apply pending migrations
+    end
+    alt Database__SeedOnStartup=true
+        Bootstrap->>Seeder: SeedFromFileAsync(seed file)
+        Seeder->>File: Parse 228 preload entries
+        Seeder->>Db: Insert missing normalized values only
+    end
+    Api-->>Compose: API starts listening
+```
+
+### CI And Release Flow
+
+```mermaid
+flowchart LR
+    PR["Pull request / push to main"]
+    Checks["PR Checks workflow<br/>restore + build + tests + Docker build checks"]
+    Release["GitHub Release or manual dispatch"]
+    SemVer["SemVer tag validator<br/>must be greater than prior SemVer tag"]
+    Publish["Release Containers workflow<br/>build + test + push images"]
+    Ghcr["GHCR API/Web images"]
+    Assets["GitHub Release assets<br/>image archives + deployment bundle + checksums"]
+
+    PR --> Checks
+    Release --> SemVer --> Publish
+    Publish --> Ghcr
+    Publish --> Assets
+```
+
 ## Project Layout
 
 ```text
 FlashInterview.slnx
+.github/
+  scripts/
+    validate_semver_tag.py          Release tag validation used by CI
+  workflows/
+    pr-checks.yml                   PR/push restore, build, test, Docker build checks
+    release-containers.yml          Release image publishing and asset upload
+deploy/
+  docker-compose.release.yml        Compose template using published image references
+  release.env.example               Release environment variable template
+docker-compose.dev.yml              Hot-reload local API, Web, and MSSQL stack
+docker-compose.yml                  Production-shaped local Compose smoke test
 src/
-  FlashInterview.Application/      Shared contracts, interfaces, seed parsing, masking logic
-  FlashInterview.Infrastructure/   EF Core SQL Server DbContext, repository, seed bootstrap
-  FlashInterview.Api/              REST API, Swagger, Serilog, health checks
-  FlashInterview.Web/              ASP.NET Core MVC frontend using API HttpClient
+  FlashInterview.Application/       Shared contracts, interfaces, seed parsing, masking logic
+    SensitiveWords/
+      SensitiveWordMasker.cs        Deterministic longest-match masking behavior
+      SensitiveWordSeedParser.cs    Parser for the supplied SQL-sensitive preload file
+      *Request.cs / *Response.cs    API and MVC shared contracts
+  FlashInterview.Infrastructure/    EF Core SQL Server persistence
+    FlashInterviewDbContext.cs      DbContext and schema model
+    Migrations/                     Initial MSSQL migration and model snapshot
+    DatabaseBootstrapper.cs         Optional startup migrations and idempotent seed
+    SensitiveWords/                 Entity, repository, and seed importer
+  FlashInterview.Api/               REST API, Swagger, Serilog, auth, rate limits, health
+    Controllers/                    Sensitive-word CRUD and message masking endpoints
+    OpenApi/                        Swagger operation/document filters
+    Security/                       Admin API-key authentication handler
+  FlashInterview.Web/               ASP.NET Core MVC frontend using API HttpClient
+    Clients/                        Typed API client with admin API-key header behavior
+    Controllers/                    Admin and mock Chat MVC controllers
+    Models/                         MVC view models
+    Views/                          Razor views
 tests/
-  FlashInterview.Tests/            xUnit tests
+  FlashInterview.Tests/             xUnit tests
+    ApiSurfaceTests.cs              API auth, validation, rate limit, Swagger surface
+    AdminWebTests.cs                MVC Admin client/controller/view behavior
+    MssqlApiIntegrationTests.cs     Optional MSSQL-backed CRUD/migration/seed coverage
+    SensitiveWord*Tests.cs          Masking, normalization, and seed parser tests
+    WebProjectArchitectureTests.cs  Frontend database-boundary guard
 docs/
-  spec.md                          Product and delivery specification
-  sql_sensitive_list.txt           SQL-sensitive preload list
+  spec.md                           Product and delivery specification
+  sql_sensitive_list.txt            SQL-sensitive preload list
 ```
 
 ## Requirements
@@ -187,11 +350,6 @@ The current xUnit suite covers:
 - MVC project architecture guards that prevent direct EF Core, SQL Server, or infrastructure references in the frontend.
 - MVC API-client behavior, including sending the admin API key only for Admin requests.
 
-## Current Scaffold Status
+## Current Codebase Status
 
 The scaffold is compile-ready and includes core deterministic masking behavior, REST API surface tests, admin API-key protection for internal CRUD, rate limiting for the mask endpoint, completed basic Admin management workflows, frontend database-boundary checks, and an initial EF Core migration for the MSSQL schema. Database bootstrap uses controlled `MigrateAsync` startup behavior when explicitly enabled; production-style Compose leaves it disabled by default.
-
-## Next Implementation Steps
-
-1. Add database-backed integration tests around the API and MSSQL.
-2. Expand Swagger examples and response documentation.
