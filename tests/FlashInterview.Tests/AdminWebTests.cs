@@ -160,6 +160,24 @@ public sealed class AdminWebTests
         Assert.Contains("asp-action=\"Delete\"", content, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void ChatIndexView_ContainsSeedExampleMessages()
+    {
+        var viewPath = Path.Combine(
+            TestPaths.RepositoryRoot,
+            "src",
+            "FlashInterview.Web",
+            "Views",
+            "Chat",
+            "Index.cshtml");
+
+        var content = File.ReadAllText(viewPath);
+
+        Assert.Contains("SELECT * FROM users", content, StringComparison.Ordinal);
+        Assert.Contains("drop table users", content, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("data-example-message", content, StringComparison.Ordinal);
+    }
+
     private static HttpResponseMessage JsonResponse(string json, HttpStatusCode statusCode = HttpStatusCode.OK)
     {
         return new HttpResponseMessage(statusCode)

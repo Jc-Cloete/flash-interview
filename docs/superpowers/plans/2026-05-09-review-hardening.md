@@ -869,7 +869,7 @@ git commit -m "chore: add compose health checks and smoke script"
 - Modify: `src/FlashInterview.Web/Views/Chat/Index.cshtml`
 - Test: `tests/FlashInterview.Tests/AdminWebTests.cs`
 
-- [ ] **Step 1: Write failing view assertion**
+- [x] **Step 1: Write failing view assertion**
 
 Add to `tests/FlashInterview.Tests/AdminWebTests.cs`:
 
@@ -893,7 +893,7 @@ public void ChatIndexView_ContainsSeedExampleMessages()
 }
 ```
 
-- [ ] **Step 2: Run the failing view test**
+- [x] **Step 2: Run the failing view test**
 
 Run:
 
@@ -903,7 +903,7 @@ dotnet test tests/FlashInterview.Tests/FlashInterview.Tests.csproj --filter "Ful
 
 Expected: FAIL because the view has no example messages.
 
-- [ ] **Step 3: Add example buttons and small script**
+- [x] **Step 3: Add example buttons and small script**
 
 Modify `src/FlashInterview.Web/Views/Chat/Index.cshtml`:
 
@@ -955,7 +955,7 @@ Modify `src/FlashInterview.Web/Views/Chat/Index.cshtml`:
 }
 ```
 
-- [ ] **Step 4: Run view test**
+- [x] **Step 4: Run view test**
 
 Run:
 
@@ -965,7 +965,7 @@ dotnet test tests/FlashInterview.Tests/FlashInterview.Tests.csproj --filter "Ful
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Run:
 
