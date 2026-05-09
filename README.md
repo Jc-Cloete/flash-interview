@@ -43,6 +43,8 @@ dotnet build FlashInterview.slnx --no-restore
 dotnet test FlashInterview.slnx --no-build
 ```
 
+The test suite includes MSSQL-backed integration tests for the API repository path, migrations, and the 228-entry preload. These tests create and drop isolated `FlashInterviewTests_<guid>` databases and are skipped automatically when SQL Server is not reachable on the default local development connection. To point them at a different SQL Server master database, set `FLASHINTERVIEW_TEST_MSSQL_MASTER`.
+
 Run everything with hot reload:
 
 ```bash
@@ -171,6 +173,7 @@ The current xUnit suite covers:
 
 - Sensitive-word normalization, seed parsing, and deterministic masking edge cases.
 - REST API surface behavior using `WebApplicationFactory` with a fake repository, so endpoint checks do not require MSSQL.
+- Optional MSSQL-backed API and preload integration coverage using isolated test databases when local SQL Server is available.
 - MVC project architecture guards that prevent direct EF Core, SQL Server, or infrastructure references in the frontend.
 
 ## Current Scaffold Status
