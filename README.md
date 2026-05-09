@@ -235,6 +235,14 @@ Run the production-style containers:
 docker compose up --build
 ```
 
+For an evaluator-friendly local smoke test that builds images, starts MSSQL, applies migrations, seeds the supplied sensitive-word list, and waits for API readiness:
+
+```bash
+./scripts/run-local-smoke.sh
+```
+
+This command uses existing shell variables first, then values from `.env`, then local development defaults for `MSSQL_SA_PASSWORD` and `FLASHINTERVIEW_ADMIN_API_KEY`. It leaves the stack running on success so the API and MVC frontend can be inspected; stop it with `docker compose down`. On timeout or interruption, it prints recent API logs and stops the stack.
+
 Production-style URLs:
 
 - API: `http://localhost:8080`

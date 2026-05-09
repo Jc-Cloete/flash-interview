@@ -716,7 +716,7 @@ git commit -m "fix: honor forwarded client ip for rate limits"
 - Create: `scripts/run-local-smoke.sh`
 - Modify: `README.md`
 
-- [ ] **Step 1: Install curl in API images**
+- [x] **Step 1: Install curl in API images**
 
 In `src/FlashInterview.Api/Dockerfile`, add this in the runtime stage after `FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime`:
 
@@ -734,7 +734,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 ```
 
-- [ ] **Step 2: Add Compose health checks**
+- [x] **Step 2: Add Compose health checks**
 
 In each compose file, add this to the `mssql` service:
 
@@ -788,7 +788,7 @@ to:
         condition: service_healthy
 ```
 
-- [ ] **Step 3: Add local smoke script**
+- [x] **Step 3: Add local smoke script**
 
 Create `scripts/run-local-smoke.sh`:
 
@@ -825,7 +825,7 @@ Run:
 chmod +x scripts/run-local-smoke.sh
 ```
 
-- [ ] **Step 4: Validate compose and script syntax**
+- [x] **Step 4: Validate compose and script syntax**
 
 Run:
 
@@ -838,7 +838,7 @@ bash -n scripts/run-local-smoke.sh
 
 Expected: all commands exit `0`.
 
-- [ ] **Step 5: Document smoke path**
+- [x] **Step 5: Document smoke path**
 
 In `README.md`, under `Production-Style Compose`, add:
 
@@ -852,7 +852,7 @@ For an evaluator-friendly local smoke test that builds images, starts MSSQL, app
 This command uses local development defaults unless `MSSQL_SA_PASSWORD` or `FLASHINTERVIEW_ADMIN_API_KEY` are already set in the shell.
 ````
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 Run:
 

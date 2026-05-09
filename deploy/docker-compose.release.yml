@@ -8,6 +8,12 @@ services:
       MSSQL_PID: "Express"
     volumes:
       - mssql-data:/var/opt/mssql
+    healthcheck:
+      test: [ "CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$${MSSQL_SA_PASSWORD}\" -C -Q 'SELECT 1' || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
     restart: unless-stopped
 
   api:
@@ -23,7 +29,14 @@ services:
       Security__MaskRateLimit__PermitLimit: "${MASK_RATE_LIMIT_PERMIT_LIMIT:-60}"
       Security__MaskRateLimit__WindowSeconds: "${MASK_RATE_LIMIT_WINDOW_SECONDS:-60}"
     depends_on:
-      - mssql
+      mssql:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -fsS http://localhost:8080/healthz || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
     ports:
       - "8080:8080"
     restart: unless-stopped
@@ -36,7 +49,8 @@ services:
       SensitiveWordsApi__BaseUrl: "http://api:8080/"
       SensitiveWordsApi__AdminApiKey: "${FLASHINTERVIEW_ADMIN_API_KEY:?set FLASHINTERVIEW_ADMIN_API_KEY}"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     ports:
       - "8081:8080"
     restart: unless-stopped
