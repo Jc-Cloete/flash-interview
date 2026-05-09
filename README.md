@@ -56,7 +56,7 @@ Development URLs:
 - MVC frontend: `http://localhost:7002`
 - MSSQL: `localhost,1433`
 
-The development API container runs `dotnet watch`, creates the database on startup, and seeds `/workspace/docs/sql_sensitive_list.txt` when `Database__EnsureCreatedOnStartup=true`.
+The development API container runs `dotnet watch`, applies EF Core migrations on startup, and seeds `/workspace/docs/sql_sensitive_list.txt` when `Database__ApplyMigrationsOnStartup=true` and `Database__SeedOnStartup=true`.
 The Compose file mounts project `bin/` and `obj/` directories to named Docker volumes so container restore/build metadata does not overwrite host-side .NET build metadata.
 
 On Apple Silicon, the MSSQL container uses `platform: linux/amd64`, so Docker runs it through emulation.
@@ -75,6 +75,7 @@ Production-style URLs:
 - MVC frontend: `http://localhost:8081`
 
 The production Compose file does not bind-mount source code and does not enable hot reload. It is intended as a deployment-shaped local smoke test, not a substitute for managed production infrastructure.
+Automatic migrations and seed preload default to off in production-style Compose. For controlled deployment, run a one-off API container or release step with `DATABASE_APPLY_MIGRATIONS_ON_STARTUP=true`; set `DATABASE_SEED_ON_STARTUP=true` in the same controlled step only when the preload should be applied. The seed import is idempotent and runs after migrations.
 
 Set `MSSQL_SA_PASSWORD` before running in any shared environment:
 
@@ -122,7 +123,8 @@ python3 .github/scripts/validate_semver_tag.py v1.0.0
 API configuration:
 
 - `ConnectionStrings__DefaultConnection`: MSSQL connection string.
-- `Database__EnsureCreatedOnStartup`: set to `true` for development-only automatic schema creation.
+- `Database__ApplyMigrationsOnStartup`: set to `true` only for a controlled migration step.
+- `Database__SeedOnStartup`: set to `true` to run the idempotent preload after the migration step.
 - `Database__SeedFile`: path to the preload file.
 
 MVC configuration:
@@ -173,12 +175,11 @@ The current xUnit suite covers:
 
 ## Current Scaffold Status
 
-The scaffold is compile-ready and includes core deterministic masking behavior, REST API surface tests, and frontend database-boundary checks. The current database bootstrap uses `EnsureCreated` for development convenience. A later implementation pass should replace this with explicit EF Core migrations before treating the production Compose file as release-grade.
+The scaffold is compile-ready and includes core deterministic masking behavior, REST API surface tests, completed basic Admin management workflows, frontend database-boundary checks, and an initial EF Core migration for the MSSQL schema. Database bootstrap uses controlled `MigrateAsync` startup behavior when explicitly enabled; production-style Compose leaves it disabled by default.
 
 ## Next Implementation Steps
 
-1. Add EF Core migrations for MSSQL.
-2. Add database-backed integration tests around the API and MSSQL.
-3. Complete admin edit/deactivate behavior in the MVC frontend.
-4. Add authentication/authorization for admin endpoints.
-5. Expand Swagger examples and response documentation.
+1. Add database-backed integration tests around the API and MSSQL.
+2. Add authentication/authorization for admin endpoints.
+3. Add rate limiting for the masking endpoint.
+4. Expand Swagger examples and response documentation.

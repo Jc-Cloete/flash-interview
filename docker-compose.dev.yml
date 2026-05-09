@@ -18,7 +18,8 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: "Development"
       ConnectionStrings__DefaultConnection: "Server=mssql,1433;Database=FlashInterview;User Id=sa;Password=Your_strong_password123;TrustServerCertificate=True;"
-      Database__EnsureCreatedOnStartup: "true"
+      Database__ApplyMigrationsOnStartup: "true"
+      Database__SeedOnStartup: "true"
       Database__SeedFile: "/workspace/docs/sql_sensitive_list.txt"
     depends_on:
       - mssql

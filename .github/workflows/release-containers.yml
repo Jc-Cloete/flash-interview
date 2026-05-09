@@ -172,7 +172,8 @@ jobs:
 
           cat > release-bundle/.env.pinned <<EOF
           MSSQL_SA_PASSWORD=replace-with-a-real-secret
-          DATABASE_ENSURE_CREATED_ON_STARTUP=false
+          DATABASE_APPLY_MIGRATIONS_ON_STARTUP=false
+          DATABASE_SEED_ON_STARTUP=false
           FLASH_INTERVIEW_API_IMAGE=${{ steps.release.outputs.api_image }}@${{ steps.build-api.outputs.digest }}
           FLASH_INTERVIEW_WEB_IMAGE=${{ steps.release.outputs.web_image }}@${{ steps.build-web.outputs.digest }}
           EOF

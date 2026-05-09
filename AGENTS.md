@@ -53,7 +53,8 @@ docker compose -f docker-compose.dev.yml up --build
 - Keep masking behavior deterministic and testable in `FlashInterview.Application`.
 - Keep API surface tests isolated from MSSQL by replacing persistence with a fake repository unless the test is intentionally database-backed.
 - Keep MVC architecture tests guarding against direct database/infrastructure dependencies in `FlashInterview.Web`.
-- Add database migrations before production hardening; current `EnsureCreated` bootstrap is development convenience.
+- Use EF Core migrations for database bootstrap; do not add new `EnsureCreated` startup paths.
+- Keep startup migrations and seed preload behind separate opt-in flags, with seeding after migrations.
 - Do not log raw chat message bodies unless a future requirement explicitly allows it.
 - Keep Serilog request logs structured with application identity, method, path, status, and elapsed time; keep EF Core command noise at `Warning` in development/container settings.
 - Preserve global exception handlers that log unexpected failures server-side without returning stack traces to API or MVC clients.

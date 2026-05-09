@@ -18,7 +18,8 @@ services:
       ASPNETCORE_ENVIRONMENT: "Production"
       ASPNETCORE_URLS: "http://+:8080"
       ConnectionStrings__DefaultConnection: "Server=mssql,1433;Database=FlashInterview;User Id=sa;Password=${MSSQL_SA_PASSWORD:-Your_strong_password123};TrustServerCertificate=True;"
-      Database__EnsureCreatedOnStartup: "${DATABASE_ENSURE_CREATED_ON_STARTUP:-false}"
+      Database__ApplyMigrationsOnStartup: "${DATABASE_APPLY_MIGRATIONS_ON_STARTUP:-false}"
+      Database__SeedOnStartup: "${DATABASE_SEED_ON_STARTUP:-false}"
       Database__SeedFile: "docs/sql_sensitive_list.txt"
     depends_on:
       - mssql
