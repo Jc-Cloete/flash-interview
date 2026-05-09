@@ -238,6 +238,100 @@ public sealed class ApiSurfaceTests
         Assert.Equal("SELECT", root.GetProperty("items")[0].GetProperty("value").GetString());
     }
 
+    [Fact]
+    public async Task SwaggerDocument_IncludesExpectedApiAndHealthEndpoints()
+    {
+        using var factory = new FlashInterviewApiFactory(new FakeSensitiveWordRepository(), AdminApiKey, environment: "Development");
+        using var client = factory.CreateHttpsClient();
+
+        using var response = await client.GetAsync("/swagger/v1/swagger.json");
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        var paths = document.RootElement.GetProperty("paths");
+
+        AssertOperation(paths, "/api/sensitive-words", "get", "200", "401");
+        AssertOperation(paths, "/api/sensitive-words", "post", "201", "400", "401");
+        AssertOperation(paths, "/api/sensitive-words/{id}", "get", "200", "401", "404");
+        AssertOperation(paths, "/api/sensitive-words/{id}", "put", "200", "400", "401", "404");
+        AssertOperation(paths, "/api/sensitive-words/{id}", "delete", "204", "401", "404");
+        AssertOperation(paths, "/api/messages/mask", "post", "200", "400", "413", "429");
+        AssertOperation(paths, "/healthz", "get", "200", "503");
+        AssertOperation(paths, "/readyz", "get", "200", "503");
+
+        var schemas = document.RootElement.GetProperty("components").GetProperty("schemas");
+        Assert.True(schemas.TryGetProperty("CreateSensitiveWordRequest", out _));
+        Assert.True(schemas.TryGetProperty("UpdateSensitiveWordRequest", out _));
+        Assert.True(schemas.TryGetProperty("MaskMessageRequest", out _));
+        Assert.True(schemas.TryGetProperty("MaskMessageResponse", out _));
+        Assert.True(schemas.TryGetProperty("SensitiveWordDto", out _));
+    }
+
+    [Fact]
+    public async Task SwaggerDocument_DescribesAdminApiKeySecurityOnlyOnSensitiveWordOperations()
+    {
+        using var factory = new FlashInterviewApiFactory(new FakeSensitiveWordRepository(), AdminApiKey, environment: "Development");
+        using var client = factory.CreateHttpsClient();
+
+        using var response = await client.GetAsync("/swagger/v1/swagger.json");
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        var root = document.RootElement;
+        var adminScheme = root
+            .GetProperty("components")
+            .GetProperty("securitySchemes")
+            .GetProperty("AdminApiKey");
+
+        Assert.Equal("apiKey", adminScheme.GetProperty("type").GetString());
+        Assert.Equal("header", adminScheme.GetProperty("in").GetString());
+        Assert.Equal("X-Admin-Api-Key", adminScheme.GetProperty("name").GetString());
+
+        var paths = root.GetProperty("paths");
+        foreach (var (path, method) in new[]
+        {
+            ("/api/sensitive-words", "get"),
+            ("/api/sensitive-words", "post"),
+            ("/api/sensitive-words/{id}", "get"),
+            ("/api/sensitive-words/{id}", "put"),
+            ("/api/sensitive-words/{id}", "delete")
+        })
+        {
+            var operation = paths.GetProperty(path).GetProperty(method);
+            var securityRequirement = Assert.Single(operation.GetProperty("security").EnumerateArray());
+            Assert.True(securityRequirement.TryGetProperty("AdminApiKey", out _), $"Expected {method.ToUpperInvariant()} {path} to require AdminApiKey.");
+        }
+
+        Assert.False(paths.GetProperty("/api/messages/mask").GetProperty("post").TryGetProperty("security", out _));
+    }
+
+    [Fact]
+    public async Task SwaggerDocument_IncludesRequestParametersAndExamplesForDocumentedOperations()
+    {
+        using var factory = new FlashInterviewApiFactory(new FakeSensitiveWordRepository(), AdminApiKey, environment: "Development");
+        using var client = factory.CreateHttpsClient();
+
+        using var response = await client.GetAsync("/swagger/v1/swagger.json");
+
+        response.EnsureSuccessStatusCode();
+        using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+        var paths = document.RootElement.GetProperty("paths");
+
+        var listParameters = paths.GetProperty("/api/sensitive-words").GetProperty("get").GetProperty("parameters");
+        AssertParameter(listParameters, "q", "query");
+        AssertParameter(listParameters, "category", "query");
+        AssertParameter(listParameters, "isActive", "query");
+        AssertParameter(listParameters, "page", "query");
+        AssertParameter(listParameters, "pageSize", "query");
+
+        var getParameters = paths.GetProperty("/api/sensitive-words/{id}").GetProperty("get").GetProperty("parameters");
+        AssertParameter(getParameters, "id", "path");
+
+        AssertJsonExample(paths.GetProperty("/api/sensitive-words").GetProperty("post"));
+        AssertJsonExample(paths.GetProperty("/api/sensitive-words/{id}").GetProperty("put"));
+        AssertJsonExample(paths.GetProperty("/api/messages/mask").GetProperty("post"));
+    }
+
     private static async Task AssertValidationErrorAsync(HttpResponseMessage response, string fieldName)
     {
         using var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
@@ -251,7 +345,8 @@ public sealed class ApiSurfaceTests
         ISensitiveWordRepository repository,
         string? adminApiKey = null,
         int? rateLimitPermitLimit = null,
-        int? rateLimitWindowSeconds = null) : WebApplicationFactory<Program>
+        int? rateLimitWindowSeconds = null,
+        string environment = "Production") : WebApplicationFactory<Program>
     {
         public HttpClient CreateHttpsClient()
         {
@@ -262,7 +357,7 @@ public sealed class ApiSurfaceTests
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
-            builder.UseEnvironment("Production");
+            builder.UseEnvironment(environment);
             builder.ConfigureAppConfiguration((_, configurationBuilder) =>
             {
                 var configuration = new Dictionary<string, string?>();
@@ -290,6 +385,40 @@ public sealed class ApiSurfaceTests
                 services.AddSingleton(repository);
             });
         }
+    }
+
+    private static void AssertOperation(JsonElement paths, string path, string method, params string[] responseStatusCodes)
+    {
+        Assert.True(paths.TryGetProperty(path, out var pathItem), $"Expected Swagger path '{path}'.");
+        Assert.True(pathItem.TryGetProperty(method, out var operation), $"Expected Swagger operation '{method.ToUpperInvariant()} {path}'.");
+
+        var responses = operation.GetProperty("responses");
+        foreach (var responseStatusCode in responseStatusCodes)
+        {
+            Assert.True(
+                responses.TryGetProperty(responseStatusCode, out _),
+                $"Expected Swagger response {responseStatusCode} on {method.ToUpperInvariant()} {path}.");
+        }
+    }
+
+    private static void AssertParameter(JsonElement parameters, string name, string location)
+    {
+        Assert.Contains(parameters.EnumerateArray(), parameter =>
+            parameter.GetProperty("name").GetString() == name &&
+            parameter.GetProperty("in").GetString() == location &&
+            parameter.TryGetProperty("description", out var description) &&
+            !string.IsNullOrWhiteSpace(description.GetString()));
+    }
+
+    private static void AssertJsonExample(JsonElement operation)
+    {
+        var jsonContent = operation
+            .GetProperty("requestBody")
+            .GetProperty("content")
+            .GetProperty("application/json");
+
+        Assert.True(jsonContent.TryGetProperty("example", out var example), "Expected an application/json request example.");
+        Assert.NotEqual(JsonValueKind.Undefined, example.ValueKind);
     }
 
     private sealed class FakeSensitiveWordRepository : ISensitiveWordRepository

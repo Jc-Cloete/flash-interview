@@ -1,4 +1,5 @@
 using FlashInterview.Api.Security;
+using FlashInterview.Api.OpenApi;
 using FlashInterview.Application.SensitiveWords;
 using FlashInterview.Infrastructure;
 using Microsoft.AspNetCore.Authentication;
@@ -63,6 +64,10 @@ builder.Services.AddSwaggerGen(options =>
         Type = SecuritySchemeType.ApiKey,
         Description = "API key required for internal sensitive-word administration endpoints."
     });
+    options.OperationFilter<AdminApiKeyOperationFilter>();
+    options.OperationFilter<RequestExampleOperationFilter>();
+    options.OperationFilter<RequestParameterDescriptionOperationFilter>();
+    options.DocumentFilter<HealthChecksDocumentFilter>();
 });
 builder.Services.AddHealthChecks();
 
