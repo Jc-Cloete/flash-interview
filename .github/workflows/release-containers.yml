@@ -70,6 +70,23 @@ jobs:
             echo "web_image=${image_prefix}-web"
           } >> "${GITHUB_OUTPUT}"
 
+          {
+            echo "api_tags<<EOF"
+            echo "${image_prefix}-api:${version}"
+            echo "${image_prefix}-api:sha-${GITHUB_SHA}"
+            if [[ "${version}" != *-* ]]; then
+              echo "${image_prefix}-api:latest"
+            fi
+            echo "EOF"
+            echo "web_tags<<EOF"
+            echo "${image_prefix}-web:${version}"
+            echo "${image_prefix}-web:sha-${GITHUB_SHA}"
+            if [[ "${version}" != *-* ]]; then
+              echo "${image_prefix}-web:latest"
+            fi
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
       - name: Ensure GitHub Release exists
         env:
           GH_TOKEN: ${{ github.token }}
@@ -79,6 +96,7 @@ jobs:
 
           if ! gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
             gh release create "${RELEASE_TAG}" \
+              --target "${GITHUB_SHA}" \
               --title "Flash Interview ${RELEASE_TAG}" \
               --notes "Container release for ${GITHUB_SHA}."
           fi
@@ -100,10 +118,7 @@ jobs:
           context: .
           file: src/FlashInterview.Api/Dockerfile
           push: true
-          tags: |
-            ${{ steps.release.outputs.api_image }}:${{ steps.release.outputs.version }}
-            ${{ steps.release.outputs.api_image }}:sha-${{ github.sha }}
-            ${{ steps.release.outputs.api_image }}:latest
+          tags: ${{ steps.release.outputs.api_tags }}
           labels: |
             org.opencontainers.image.title=Flash Interview API
             org.opencontainers.image.description=Flash Interview REST API
@@ -118,10 +133,7 @@ jobs:
           context: .
           file: src/FlashInterview.Web/Dockerfile
           push: true
-          tags: |
-            ${{ steps.release.outputs.web_image }}:${{ steps.release.outputs.version }}
-            ${{ steps.release.outputs.web_image }}:sha-${{ github.sha }}
-            ${{ steps.release.outputs.web_image }}:latest
+          tags: ${{ steps.release.outputs.web_tags }}
           labels: |
             org.opencontainers.image.title=Flash Interview Web
             org.opencontainers.image.description=Flash Interview ASP.NET Core MVC frontend

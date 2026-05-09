@@ -249,7 +249,7 @@ Production-style URLs:
 - MVC frontend: `http://localhost:8081`
 
 The production Compose file does not bind-mount source code and does not enable hot reload. It is intended as a deployment-shaped local smoke test, not a substitute for managed production infrastructure.
-Automatic migrations and seed preload default to off in production-style Compose. For controlled deployment, run a one-off API container or release step with `DATABASE_APPLY_MIGRATIONS_ON_STARTUP=true`; set `DATABASE_SEED_ON_STARTUP=true` in the same controlled step only when the preload should be applied. The seed import is idempotent and runs after migrations.
+Automatic migrations and seed preload default to off in production-style Compose. For controlled deployment, run a one-off API container or release step with `Database__ApplyMigrationsOnStartup=true`; set `Database__SeedOnStartup=true` in the same controlled step only when the preload should be applied. The seed import is idempotent and runs after migrations.
 
 Set `MSSQL_SA_PASSWORD` before running in any shared environment:
 
@@ -308,7 +308,7 @@ API configuration:
 MVC configuration:
 
 - `SensitiveWordsApi__BaseUrl`: base URL for the REST API.
-- `SensitiveWordsApi__AdminApiKey`: API key sent only on MVC Admin CRUD/list requests.
+- `SensitiveWordsApi__AdminApiKey`: API key sent only on MVC Admin CRUD/list requests. Production deployments must supply this through environment variables or secrets management; the checked-in production appsettings value is only a placeholder.
 
 ## Logging
 

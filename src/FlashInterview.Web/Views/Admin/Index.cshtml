@@ -19,30 +19,9 @@
         <div class="col-md-3">
             <label class="form-label" for="isActive">Status</label>
             <select class="form-select" id="isActive" name="isActive">
-                @if (Model.Filter.IsActive is null)
-                {
-                    <option value="" selected>All</option>
-                }
-                else
-                {
-                    <option value="">All</option>
-                }
-                @if (Model.Filter.IsActive == true)
-                {
-                    <option value="true" selected>Active</option>
-                }
-                else
-                {
-                    <option value="true">Active</option>
-                }
-                @if (Model.Filter.IsActive == false)
-                {
-                    <option value="false" selected>Inactive</option>
-                }
-                else
-                {
-                    <option value="false">Inactive</option>
-                }
+                <option value="" selected="@(Model.Filter.IsActive is null)">All</option>
+                <option value="true" selected="@(Model.Filter.IsActive == true)">Active</option>
+                <option value="false" selected="@(Model.Filter.IsActive == false)">Inactive</option>
             </select>
         </div>
         <div class="col-md-2 d-flex align-items-end">

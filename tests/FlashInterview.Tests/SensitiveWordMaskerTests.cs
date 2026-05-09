@@ -65,6 +65,22 @@ public sealed class SensitiveWordMaskerTests
     }
 
     [Fact]
+    public void Mask_UsesDeterministicTieBreakForSameLengthOverlaps()
+    {
+        var masker = new SensitiveWordMasker();
+        var words = new[]
+        {
+            new SensitiveWordCandidate("B C"),
+            new SensitiveWordCandidate("A B")
+        };
+
+        var result = masker.Mask("A B C", words);
+
+        Assert.Equal("*** C", result.MaskedMessage);
+        Assert.Equal(new SensitiveWordMatch("A B", 0, 3), Assert.Single(result.Matches));
+    }
+
+    [Fact]
     public void Mask_IgnoresBlankCandidatesAndDeduplicatesWords()
     {
         var masker = new SensitiveWordMasker();

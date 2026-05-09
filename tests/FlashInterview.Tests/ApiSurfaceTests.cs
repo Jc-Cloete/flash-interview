@@ -195,7 +195,7 @@ public sealed class ApiSurfaceTests
         var staleMatcherForInFlightRequest = await inFlightRefresh;
         var refreshedMatcher = await cache.GetAsync(CancellationToken.None);
 
-        Assert.Equal("**** SELECT", staleMatcherForInFlightRequest.Mask("DROP SELECT").MaskedMessage);
+        Assert.Equal("DROP ******", staleMatcherForInFlightRequest.Mask("DROP SELECT").MaskedMessage);
         Assert.Equal("DROP ******", refreshedMatcher.Mask("DROP SELECT").MaskedMessage);
         Assert.Equal(2, repository.ListActiveCandidatesCallCount);
     }

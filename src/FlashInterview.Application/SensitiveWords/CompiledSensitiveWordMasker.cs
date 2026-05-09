@@ -18,6 +18,7 @@ public sealed class CompiledSensitiveWordMasker
             .Where(value => value.Length > 0)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderByDescending(value => value.Length)
+            .ThenBy(value => value, StringComparer.OrdinalIgnoreCase)
             .Select(value => new PreparedSensitiveWord(
                 value,
                 new Regex(

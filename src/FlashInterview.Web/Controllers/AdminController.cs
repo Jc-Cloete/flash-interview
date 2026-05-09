@@ -76,8 +76,6 @@ public sealed class AdminController(SensitiveWordsApiClient apiClient) : Control
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Deactivate(
         Guid id,
-        string value,
-        string? wordCategory,
         string? q,
         string? category,
         bool? isActive,
@@ -85,7 +83,16 @@ public sealed class AdminController(SensitiveWordsApiClient apiClient) : Control
     {
         try
         {
-            await apiClient.UpdateAsync(id, new UpdateSensitiveWordRequest(value, wordCategory, false), cancellationToken);
+            var existing = await apiClient.GetAsync(id, cancellationToken);
+            if (existing is null)
+            {
+                return RedirectToAction(nameof(Index), new { q, category, isActive });
+            }
+
+            await apiClient.UpdateAsync(
+                id,
+                new UpdateSensitiveWordRequest(existing.Value, existing.Category, false),
+                cancellationToken);
         }
         catch (ApiValidationException exception)
         {

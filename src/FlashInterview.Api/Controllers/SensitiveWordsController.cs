@@ -1,4 +1,5 @@
 using FlashInterview.Api.SensitiveWords;
+using FlashInterview.Api.Security;
 using FlashInterview.Application.SensitiveWords;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -8,7 +9,7 @@ namespace FlashInterview.Api.Controllers;
 
 [ApiController]
 [Route("api/sensitive-words")]
-[Authorize(Policy = "AdminApiKey")]
+[Authorize(Policy = AuthorizationPolicies.AdminApiKey)]
 public sealed class SensitiveWordsController(
     ISensitiveWordRepository repository,
     ISensitiveWordMatcherCache matcherCache) : ControllerBase

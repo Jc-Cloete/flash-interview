@@ -59,6 +59,19 @@ public sealed class SensitiveWordsApiClient(
         await EnsureSuccessOrThrowValidationAsync(response, cancellationToken);
     }
 
+    public async Task<SensitiveWordDto?> GetAsync(Guid id, CancellationToken cancellationToken)
+    {
+        using var httpRequest = CreateAdminRequest(HttpMethod.Get, $"api/sensitive-words/{id}");
+        using var response = await httpClient.SendAsync(httpRequest, cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<SensitiveWordDto>(cancellationToken);
+    }
+
     public async Task UpdateAsync(Guid id, UpdateSensitiveWordRequest request, CancellationToken cancellationToken)
     {
         using var httpRequest = CreateAdminRequest(HttpMethod.Put, $"api/sensitive-words/{id}");
@@ -76,7 +89,7 @@ public sealed class SensitiveWordsApiClient(
 
     public async Task<MaskMessageResponse?> MaskAsync(MaskMessageRequest request, CancellationToken cancellationToken)
     {
-        var response = await httpClient.PostAsJsonAsync("api/messages/mask", request, cancellationToken);
+        using var response = await httpClient.PostAsJsonAsync("api/messages/mask", request, cancellationToken);
         response.EnsureSuccessStatusCode();
 
         return await response.Content.ReadFromJsonAsync<MaskMessageResponse>(cancellationToken);
@@ -119,36 +132,43 @@ public sealed class SensitiveWordsApiClient(
         CancellationToken cancellationToken)
     {
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+        try
+        {
+            using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
 
-        if (!document.RootElement.TryGetProperty("errors", out var errorsElement)
-            || errorsElement.ValueKind != JsonValueKind.Object)
+            if (!document.RootElement.TryGetProperty("errors", out var errorsElement)
+                || errorsElement.ValueKind != JsonValueKind.Object)
+            {
+                return [];
+            }
+
+            var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+            foreach (var property in errorsElement.EnumerateObject())
+            {
+                if (property.Value.ValueKind != JsonValueKind.Array)
+                {
+                    continue;
+                }
+
+                var messages = property.Value
+                    .EnumerateArray()
+                    .Where(element => element.ValueKind == JsonValueKind.String)
+                    .Select(element => element.GetString())
+                    .Where(message => !string.IsNullOrWhiteSpace(message))
+                    .Cast<string>()
+                    .ToArray();
+
+                if (messages.Length > 0)
+                {
+                    errors[property.Name] = messages;
+                }
+            }
+
+            return errors;
+        }
+        catch (JsonException)
         {
             return [];
         }
-
-        var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
-        foreach (var property in errorsElement.EnumerateObject())
-        {
-            if (property.Value.ValueKind != JsonValueKind.Array)
-            {
-                continue;
-            }
-
-            var messages = property.Value
-                .EnumerateArray()
-                .Where(element => element.ValueKind == JsonValueKind.String)
-                .Select(element => element.GetString())
-                .Where(message => !string.IsNullOrWhiteSpace(message))
-                .Cast<string>()
-                .ToArray();
-
-            if (messages.Length > 0)
-            {
-                errors[property.Name] = messages;
-            }
-        }
-
-        return errors;
     }
 }

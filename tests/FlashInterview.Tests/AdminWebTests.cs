@@ -50,6 +50,36 @@ public sealed class AdminWebTests
         Assert.Equal(AdminApiKey, request.Headers.GetValues("X-Admin-Api-Key").Single());
     }
 
+    [Fact]
+    public async Task ApiClient_GetAsync_SendsGetRequestWithConfiguredApiKey()
+    {
+        var id = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        using var handler = new RecordingHandler(
+            _ => JsonResponse(
+                $$"""
+                {
+                  "id":"{{id}}",
+                  "value":"DROP",
+                  "normalizedValue":"DROP",
+                  "category":"sql",
+                  "isActive":true,
+                  "createdAt":"2026-05-09T00:00:00Z",
+                  "updatedAt":"2026-05-09T00:00:00Z"
+                }
+                """));
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://api.example.test/") };
+        var client = CreateClient(httpClient);
+
+        var result = await client.GetAsync(id, CancellationToken.None);
+
+        var request = handler.Requests.Single();
+        Assert.Equal(HttpMethod.Get, request.Method);
+        Assert.Equal($"https://api.example.test/api/sensitive-words/{id}", request.RequestUri?.AbsoluteUri);
+        Assert.Equal(AdminApiKey, request.Headers.GetValues("X-Admin-Api-Key").Single());
+        Assert.NotNull(result);
+        Assert.Equal("DROP", result.Value);
+    }
+
     [Theory]
     [InlineData("create")]
     [InlineData("delete")]
@@ -111,6 +141,20 @@ public sealed class AdminWebTests
     }
 
     [Fact]
+    public async Task ApiClient_CreateAsync_PropagatesBadRequestWhenValidationBodyIsMalformed()
+    {
+        using var handler = new RecordingHandler(
+            _ => JsonResponse("not-json", HttpStatusCode.BadRequest));
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://api.example.test/") };
+        var client = CreateClient(httpClient);
+
+        var exception = await Assert.ThrowsAsync<HttpRequestException>(
+            () => client.CreateAsync(new CreateSensitiveWordRequest("DROP", "sql"), CancellationToken.None));
+
+        Assert.Equal(HttpStatusCode.BadRequest, exception.StatusCode);
+    }
+
+    [Fact]
     public async Task AdminController_Create_AddsApiValidationErrorsToModelState()
     {
         using var handler = new RecordingHandler(
@@ -136,6 +180,49 @@ public sealed class AdminWebTests
         Assert.IsType<AdminViewModel>(view.Model);
         Assert.False(controller.ModelState.IsValid);
         Assert.Equal("Duplicate value.", controller.ModelState["Value"]?.Errors.Single().ErrorMessage);
+    }
+
+    [Fact]
+    public async Task AdminController_Deactivate_FetchesExistingRecordBeforeUpdating()
+    {
+        var id = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        var updateBody = "";
+        using var handler = new RecordingHandler(request =>
+        {
+            if (request.Method == HttpMethod.Get && request.RequestUri?.AbsolutePath == $"/api/sensitive-words/{id}")
+            {
+                return JsonResponse(
+                    $$"""
+                    {
+                      "id":"{{id}}",
+                      "value":"Stored Value",
+                      "normalizedValue":"STORED VALUE",
+                      "category":"stored",
+                      "isActive":true,
+                      "createdAt":"2026-05-09T00:00:00Z",
+                      "updatedAt":"2026-05-09T00:00:00Z"
+                    }
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Put)
+            {
+                updateBody = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+                return new HttpResponseMessage(HttpStatusCode.OK);
+            }
+
+            return JsonResponse("""{"items":[],"page":1,"pageSize":50,"total":0}""");
+        });
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://api.example.test/") };
+        var controller = new AdminController(CreateClient(httpClient));
+
+        await controller.Deactivate(id, null, null, null, CancellationToken.None);
+
+        var updateRequest = handler.Requests.Single(request => request.Method == HttpMethod.Put);
+        Assert.Equal($"https://api.example.test/api/sensitive-words/{id}", updateRequest.RequestUri?.AbsoluteUri);
+        Assert.Contains("\"value\":\"Stored Value\"", updateBody, StringComparison.Ordinal);
+        Assert.Contains("\"category\":\"stored\"", updateBody, StringComparison.Ordinal);
+        Assert.Contains("\"isActive\":false", updateBody, StringComparison.Ordinal);
     }
 
     [Fact]

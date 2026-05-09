@@ -1,3 +1,4 @@
+using FlashInterview.Api.Health;
 using FlashInterview.Api.Security;
 using FlashInterview.Api.SensitiveWords;
 using FlashInterview.Api.OpenApi;
@@ -7,7 +8,6 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
-using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.OpenApi;
 using Serilog;
 using Serilog.Events;
@@ -35,7 +35,7 @@ builder.Services
         _ => { });
 builder.Services.AddAuthorization(options =>
 {
-    options.AddPolicy("AdminApiKey", policy =>
+    options.AddPolicy(AuthorizationPolicies.AdminApiKey, policy =>
     {
         policy.AddAuthenticationSchemes(AdminApiKeyAuthenticationHandler.SchemeName);
         policy.RequireAuthenticatedUser();
@@ -76,13 +76,7 @@ builder.Services.AddSwaggerGen(options =>
 });
 builder.Services
     .AddHealthChecks()
-    .AddSqlServer(
-        serviceProvider => serviceProvider.GetRequiredService<IConfiguration>().GetConnectionString("DefaultConnection")
-            ?? throw new InvalidOperationException("ConnectionStrings:DefaultConnection is required."),
-        healthQuery: "SELECT 1;",
-        name: "mssql",
-        failureStatus: HealthStatus.Unhealthy,
-        tags: new[] { "ready" });
+    .AddCheck<SqlServerReadinessHealthCheck>("mssql", tags: ["ready"]);
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;

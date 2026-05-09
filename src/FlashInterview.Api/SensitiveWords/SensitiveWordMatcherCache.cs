@@ -11,23 +11,16 @@ public sealed class SensitiveWordMatcherCache(IServiceScopeFactory scopeFactory)
 
     public async Task<CompiledSensitiveWordMasker> GetAsync(CancellationToken cancellationToken)
     {
-        var current = cachedEntry;
-        if (current is not null)
+        while (true)
         {
-            return current.Masker;
-        }
-
-        await refreshLock.WaitAsync(cancellationToken);
-        try
-        {
-            current = cachedEntry;
+            var current = cachedEntry;
             if (current is not null)
             {
                 return current.Masker;
             }
 
-            long refreshGeneration;
-            lock (cacheLock)
+            await refreshLock.WaitAsync(cancellationToken);
+            try
             {
                 current = cachedEntry;
                 if (current is not null)
@@ -35,27 +28,38 @@ public sealed class SensitiveWordMatcherCache(IServiceScopeFactory scopeFactory)
                     return current.Masker;
                 }
 
-                refreshGeneration = generation;
-            }
-
-            using var scope = scopeFactory.CreateScope();
-            var repository = scope.ServiceProvider.GetRequiredService<ISensitiveWordRepository>();
-            var candidates = await repository.ListActiveCandidatesAsync(cancellationToken);
-
-            var refreshed = CompiledSensitiveWordMasker.FromCandidates(candidates);
-            lock (cacheLock)
-            {
-                if (generation == refreshGeneration)
+                long refreshGeneration;
+                lock (cacheLock)
                 {
-                    cachedEntry = new CacheEntry(refreshGeneration, refreshed);
+                    current = cachedEntry;
+                    if (current is not null)
+                    {
+                        return current.Masker;
+                    }
+
+                    refreshGeneration = generation;
+                }
+
+                using var scope = scopeFactory.CreateScope();
+                var repository = scope.ServiceProvider.GetRequiredService<ISensitiveWordRepository>();
+                var candidates = await repository.ListActiveCandidatesAsync(cancellationToken);
+
+                var refreshed = CompiledSensitiveWordMasker.FromCandidates(candidates);
+                lock (cacheLock)
+                {
+                    if (generation == refreshGeneration)
+                    {
+                        cachedEntry = new CacheEntry(refreshGeneration, refreshed);
+                        return refreshed;
+                    }
                 }
             }
+            finally
+            {
+                refreshLock.Release();
+            }
 
-            return refreshed;
-        }
-        finally
-        {
-            refreshLock.Release();
+            cancellationToken.ThrowIfCancellationRequested();
         }
     }
 

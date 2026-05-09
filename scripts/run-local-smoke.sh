@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd "${script_dir}/.." && pwd)"
+compose_file="${repo_root}/docker-compose.yml"
+
 read_dotenv_value() {
   local key="$1"
 
-  if [[ ! -f .env ]]; then
+  if [[ ! -f "${repo_root}/.env" ]]; then
     return 1
   fi
 
@@ -43,7 +47,7 @@ read_dotenv_value() {
       }
       print dotenv_value
     }
-  ' .env
+  ' "${repo_root}/.env"
 }
 
 set_default_from_shell_dotenv_or_fallback() {
@@ -70,9 +74,9 @@ cleanup() {
 
   if [[ "$exit_code" -ne 0 ]]; then
     printf '\nSmoke script did not complete. Recent API logs:\n'
-    docker compose logs --tail=100 api || true
+    docker compose -f "${compose_file}" logs --tail=100 api || true
     printf '\nStopping smoke-test stack:\n'
-    docker compose down || true
+    docker compose -f "${compose_file}" down || true
   fi
 
   exit "$exit_code"
@@ -87,7 +91,9 @@ set_default_from_shell_dotenv_or_fallback FLASHINTERVIEW_ADMIN_API_KEY "local-sm
 export DATABASE_APPLY_MIGRATIONS_ON_STARTUP=true
 export DATABASE_SEED_ON_STARTUP=true
 
-docker compose up --build -d
+cd "${repo_root}"
+
+docker compose -f "${compose_file}" up --build -d
 
 printf 'Waiting for API readiness'
 for _ in {1..60}; do
@@ -108,7 +114,7 @@ printf 'Waiting for MVC readiness'
 for _ in {1..60}; do
   if curl -fsS http://localhost:8081/ >/dev/null; then
     printf '\nMVC ready: http://localhost:8081\n'
-    printf 'Smoke stack left running. Stop it with: docker compose down\n'
+    printf 'Smoke stack left running. Stop it with: docker compose -f %q down\n' "${compose_file}"
     exit 0
   fi
   printf '.'

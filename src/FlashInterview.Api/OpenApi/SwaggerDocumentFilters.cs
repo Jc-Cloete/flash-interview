@@ -15,7 +15,7 @@ internal sealed class AdminApiKeyOperationFilter : IOperationFilter
             .OfType<AuthorizeAttribute>()
             .Concat(context.MethodInfo.DeclaringType?.GetCustomAttributes(true).OfType<AuthorizeAttribute>() ?? []);
 
-        if (!authorizeAttributes.Any(attribute => attribute.Policy == "AdminApiKey"))
+        if (!authorizeAttributes.Any(attribute => attribute.Policy == AuthorizationPolicies.AdminApiKey))
         {
             return;
         }
