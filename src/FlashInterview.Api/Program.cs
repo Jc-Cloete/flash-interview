@@ -6,10 +6,12 @@ using FlashInterview.Infrastructure;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.OpenApi;
 using Serilog;
 using Serilog.Events;
+using System.Net;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -81,6 +83,15 @@ builder.Services
         name: "mssql",
         failureStatus: HealthStatus.Unhealthy,
         tags: new[] { "ready" });
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.ForwardLimit = 1;
+    options.KnownIPNetworks.Clear();
+    options.KnownProxies.Clear();
+    options.KnownProxies.Add(IPAddress.Loopback);
+    options.KnownProxies.Add(IPAddress.IPv6Loopback);
+});
 
 var app = builder.Build();
 
@@ -113,6 +124,7 @@ app.UseExceptionHandler(errorApp =>
     });
 });
 
+app.UseForwardedHeaders();
 app.UseSerilogRequestLogging(options =>
 {
     options.MessageTemplate =

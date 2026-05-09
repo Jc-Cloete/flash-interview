@@ -615,7 +615,7 @@ git commit -m "perf: cache compiled sensitive word matcher"
 - Modify: `src/FlashInterview.Api/Program.cs`
 - Test: `tests/FlashInterview.Tests/ApiSurfaceTests.cs`
 
-- [ ] **Step 1: Write forwarded-header rate-limit test**
+- [x] **Step 1: Write forwarded-header rate-limit test**
 
 Add to `tests/FlashInterview.Tests/ApiSurfaceTests.cs`:
 
@@ -649,7 +649,7 @@ public async Task MaskEndpoint_RateLimitUsesForwardedClientIpWhenConfiguredByPro
 }
 ```
 
-- [ ] **Step 2: Run the failing forwarded-header test**
+- [x] **Step 2: Run the failing forwarded-header test**
 
 Run:
 
@@ -659,7 +659,7 @@ dotnet test tests/FlashInterview.Tests/FlashInterview.Tests.csproj --filter "Ful
 
 Expected: FAIL because both requests share the same remote address in the test server.
 
-- [ ] **Step 3: Configure forwarded headers**
+- [x] **Step 3: Configure forwarded headers**
 
 In `src/FlashInterview.Api/Program.cs`, add:
 
@@ -684,7 +684,7 @@ Before `app.UseSerilogRequestLogging(...)`, add:
 app.UseForwardedHeaders();
 ```
 
-- [ ] **Step 4: Run forwarded-header and rate-limit tests**
+- [x] **Step 4: Run forwarded-header and rate-limit tests**
 
 Run:
 
@@ -694,7 +694,7 @@ dotnet test tests/FlashInterview.Tests/FlashInterview.Tests.csproj --filter "Ful
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Run:
 

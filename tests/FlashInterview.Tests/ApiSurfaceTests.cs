@@ -260,6 +260,34 @@ public sealed class ApiSurfaceTests
     }
 
     [Fact]
+    public async Task MaskEndpoint_RateLimitUsesForwardedClientIpWhenConfiguredByProxy()
+    {
+        using var factory = new FlashInterviewApiFactory(
+            new FakeSensitiveWordRepository(),
+            rateLimitPermitLimit: 1,
+            rateLimitWindowSeconds: 60);
+        using var client = factory.CreateHttpsClient();
+
+        using var firstRequest = new HttpRequestMessage(HttpMethod.Post, "/api/messages/mask")
+        {
+            Content = JsonContent.Create(new MaskMessageRequest("DROP"))
+        };
+        firstRequest.Headers.Add("X-Forwarded-For", "203.0.113.10");
+
+        using var secondRequest = new HttpRequestMessage(HttpMethod.Post, "/api/messages/mask")
+        {
+            Content = JsonContent.Create(new MaskMessageRequest("DROP"))
+        };
+        secondRequest.Headers.Add("X-Forwarded-For", "203.0.113.20");
+
+        using var firstResponse = await client.SendAsync(firstRequest);
+        using var secondResponse = await client.SendAsync(secondRequest);
+
+        Assert.Equal(HttpStatusCode.OK, firstResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, secondResponse.StatusCode);
+    }
+
+    [Fact]
     public async Task MaskEndpoint_ReturnsBadRequestWhenMessageIsMissing()
     {
         using var factory = new FlashInterviewApiFactory(new FakeSensitiveWordRepository());
