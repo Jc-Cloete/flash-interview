@@ -6,6 +6,7 @@
     <Project Path="src/FlashInterview.Web/FlashInterview.Web.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/FlashInterview.PerformanceTests/FlashInterview.PerformanceTests.csproj" />
     <Project Path="tests/FlashInterview.Tests/FlashInterview.Tests.csproj" />
   </Folder>
 </Solution>

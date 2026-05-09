@@ -2,7 +2,9 @@
 bin/
 obj/
 artifacts/
+artifacts/performance/
 publish/
+BenchmarkDotNet.Artifacts/
 
 # Test and coverage output
 TestResults/

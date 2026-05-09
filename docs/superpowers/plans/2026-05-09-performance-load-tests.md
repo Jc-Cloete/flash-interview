@@ -418,7 +418,7 @@ git commit -m "feat: add masking performance metrics"
 - Modify: `FlashInterview.slnx`
 - Modify: `.gitignore`
 
-- [ ] **Step 1: Scaffold the console project**
+- [x] **Step 1: Scaffold the console project**
 
 Run:
 
@@ -433,7 +433,7 @@ dotnet add tests/FlashInterview.PerformanceTests/FlashInterview.PerformanceTests
 
 Expected: the project is created, added to the solution, references the application project, and package references are added.
 
-- [ ] **Step 2: Add generated artifact ignores**
+- [x] **Step 2: Add generated artifact ignores**
 
 Add these lines to `.gitignore` if they are not already present:
 
@@ -442,7 +442,7 @@ artifacts/performance/
 BenchmarkDotNet.Artifacts/
 ```
 
-- [ ] **Step 3: Add the command router**
+- [x] **Step 3: Add the command router**
 
 Replace `tests/FlashInterview.PerformanceTests/Program.cs` with:
 
@@ -497,7 +497,7 @@ static void PrintUsage()
 
 Expected: this does not compile until Task 4 adds load scenario types.
 
-- [ ] **Step 4: Add masking benchmark class**
+- [x] **Step 4: Add masking benchmark class**
 
 Create `tests/FlashInterview.PerformanceTests/MaskerBenchmarks.cs`:
 
@@ -549,7 +549,7 @@ public class MaskerBenchmarks
 }
 ```
 
-- [ ] **Step 5: Verify benchmark command reaches expected missing load types**
+- [x] **Step 5: Verify benchmark command reaches expected missing load types**
 
 Run:
 
@@ -559,7 +559,7 @@ dotnet build tests/FlashInterview.PerformanceTests/FlashInterview.PerformanceTes
 
 Expected: FAIL only because `LoadTestOptions` and `FlashInterviewLoadScenarios` do not exist yet.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 Run:
 
