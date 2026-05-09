@@ -47,4 +47,66 @@ public sealed class SensitiveWordMaskerTests
         Assert.Single(result.Matches);
         Assert.Equal("SELECT * FROM", result.Matches[0].Value);
     }
+
+    [Fact]
+    public void Mask_IgnoresBlankCandidatesAndDeduplicatesWords()
+    {
+        var masker = new SensitiveWordMasker();
+        var words = new[]
+        {
+            new SensitiveWordCandidate(" "),
+            new SensitiveWordCandidate(" drop "),
+            new SensitiveWordCandidate("DROP")
+        };
+
+        var result = masker.Mask("drop DROP", words);
+
+        Assert.Equal("**** ****", result.MaskedMessage);
+        Assert.Equal(
+            [
+                new SensitiveWordMatch("drop", 0, 4),
+                new SensitiveWordMatch("drop", 5, 9)
+            ],
+            result.Matches);
+    }
+
+    [Fact]
+    public void Mask_HandlesRegexCharactersLiterally()
+    {
+        var masker = new SensitiveWordMasker();
+        var words = new[] { new SensitiveWordCandidate("SELECT * FROM") };
+
+        var result = masker.Mask("SELECT a FROM users; SELECT * FROM secrets", words);
+
+        Assert.Equal("SELECT a FROM users; ************* secrets", result.MaskedMessage);
+        Assert.Single(result.Matches);
+        Assert.Equal(new SensitiveWordMatch("SELECT * FROM", 21, 34), result.Matches[0]);
+    }
+
+    [Theory]
+    [InlineData("DROP,DROP.", "****,****.")]
+    [InlineData("_DROP DROP DROP_TABLE", "_DROP **** DROP_TABLE")]
+    [InlineData("DROP-table", "****-table")]
+    public void Mask_OnlyAppliesSingleWordBoundaryRulesToSingleWordCandidates(string message, string expected)
+    {
+        var masker = new SensitiveWordMasker();
+        var words = new[] { new SensitiveWordCandidate("DROP") };
+
+        var result = masker.Mask(message, words);
+
+        Assert.Equal(expected, result.MaskedMessage);
+    }
+
+    [Fact]
+    public void Mask_ReturnsEmptyMessageWithoutMatches()
+    {
+        var masker = new SensitiveWordMasker();
+        var words = new[] { new SensitiveWordCandidate("DROP") };
+
+        var result = masker.Mask(string.Empty, words);
+
+        Assert.Equal(string.Empty, result.OriginalMessage);
+        Assert.Equal(string.Empty, result.MaskedMessage);
+        Assert.Empty(result.Matches);
+    }
 }

@@ -104,6 +104,10 @@ Serilog is configured in both web applications:
 
 Both write structured logs to console and use Serilog request logging for HTTP requests. Container platforms can collect logs directly from stdout/stderr.
 
+Request log events include the application identity, HTTP method, path, status code, and elapsed time. Development and container-development settings keep framework, EF Core SQL command, and outbound HttpClient logs at `Warning` to avoid drowning out useful request and application events.
+
+Unexpected exceptions are handled globally in both web entrypoints. The exception is logged server-side with request method/path context, while API clients receive a generic problem response and MVC users receive a generic error page without stack traces. Do not add request-body logging for `POST /api/messages/mask` or MVC chat submissions; raw chat message bodies are intentionally excluded from logs.
+
 ## API Surface
 
 Sensitive-word CRUD:
@@ -125,14 +129,22 @@ Health endpoints:
 
 Swagger UI is enabled in development at `/swagger`.
 
+## Test Coverage
+
+The current xUnit suite covers:
+
+- Sensitive-word normalization, seed parsing, and deterministic masking edge cases.
+- REST API surface behavior using `WebApplicationFactory` with a fake repository, so endpoint checks do not require MSSQL.
+- MVC project architecture guards that prevent direct EF Core, SQL Server, or infrastructure references in the frontend.
+
 ## Current Scaffold Status
 
-The scaffold is compile-ready and includes core deterministic masking behavior plus seed parsing tests. The current database bootstrap uses `EnsureCreated` for development convenience. A later implementation pass should replace this with explicit EF Core migrations before treating the production Compose file as release-grade.
+The scaffold is compile-ready and includes core deterministic masking behavior, REST API surface tests, and frontend database-boundary checks. The current database bootstrap uses `EnsureCreated` for development convenience. A later implementation pass should replace this with explicit EF Core migrations before treating the production Compose file as release-grade.
 
 ## Next Implementation Steps
 
 1. Add EF Core migrations for MSSQL.
-2. Add integration tests around the API and database.
+2. Add database-backed integration tests around the API and MSSQL.
 3. Complete admin edit/deactivate behavior in the MVC frontend.
 4. Add authentication/authorization for admin endpoints.
 5. Expand Swagger examples and response documentation.
