@@ -90,6 +90,26 @@ public sealed class ApiSurfaceTests
     }
 
     [Fact]
+    public async Task ApiResponses_ReturnCorrelationAndSessionHeadersForLogDiscovery()
+    {
+        using var factory = new FlashInterviewApiFactory(new FakeSensitiveWordRepository());
+        using var client = factory.CreateHttpsClient();
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/messages/mask")
+        {
+            Content = JsonContent.Create(new MaskMessageRequest("DROP"))
+        };
+        request.Headers.Add("X-Correlation-Id", "correlation-from-client");
+        request.Headers.Add("X-Session-Id", "session-from-client");
+
+        using var response = await client.SendAsync(request);
+
+        response.EnsureSuccessStatusCode();
+        Assert.Equal("correlation-from-client", response.Headers.GetValues("X-Correlation-Id").Single());
+        Assert.Equal("session-from-client", response.Headers.GetValues("X-Session-Id").Single());
+    }
+
+    [Fact]
     public async Task MaskEndpoint_ReusesCachedActiveCandidatesAcrossRepeatedCallsAndRefreshesAfterCreateInvalidation()
     {
         var repository = new FakeSensitiveWordRepository
