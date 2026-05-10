@@ -5,7 +5,7 @@ namespace FlashInterview.Tests;
 public sealed class WebProjectArchitectureTests
 {
     [Fact]
-    public void WebProject_DoesNotReferenceInfrastructureOrEntityFrameworkPackages()
+    public void WebProject_ReferencesOnlyApplicationContractsFromSolutionProjects()
     {
         var projectPath = Path.Combine(TestPaths.RepositoryRoot, "src", "FlashInterview.Web", "FlashInterview.Web.csproj");
         var document = XDocument.Load(projectPath);
@@ -16,13 +16,31 @@ public sealed class WebProjectArchitectureTests
             .Cast<string>()
             .ToArray();
 
+        var unexpectedProjectReferences = projectReferences
+            .Where(reference =>
+            {
+                var normalizedReference = reference.Replace('\\', Path.DirectorySeparatorChar);
+                return !normalizedReference.EndsWith(
+                    Path.Combine("FlashInterview.Application", "FlashInterview.Application.csproj"),
+                    StringComparison.OrdinalIgnoreCase);
+            })
+            .ToArray();
+
+        Assert.Empty(unexpectedProjectReferences);
+    }
+
+    [Fact]
+    public void WebProject_DoesNotReferenceEntityFrameworkOrSqlClientPackages()
+    {
+        var projectPath = Path.Combine(TestPaths.RepositoryRoot, "src", "FlashInterview.Web", "FlashInterview.Web.csproj");
+        var document = XDocument.Load(projectPath);
+
         var packageReferences = document.Descendants("PackageReference")
             .Select(element => element.Attribute("Include")?.Value)
             .Where(value => value is not null)
             .Cast<string>()
             .ToArray();
 
-        Assert.DoesNotContain(projectReferences, reference => reference.Contains("Infrastructure", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(packageReferences, package => package.Contains("EntityFramework", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(packageReferences, package => package.Contains("SqlClient", StringComparison.OrdinalIgnoreCase));
     }
@@ -42,7 +60,12 @@ public sealed class WebProjectArchitectureTests
                 entry.line.Contains("FlashInterview.Infrastructure", StringComparison.Ordinal)
                 || entry.line.Contains("Microsoft.EntityFrameworkCore", StringComparison.Ordinal)
                 || entry.line.Contains("Microsoft.Data.SqlClient", StringComparison.Ordinal)
-                || entry.line.Contains("System.Data.SqlClient", StringComparison.Ordinal))
+                || entry.line.Contains("System.Data.SqlClient", StringComparison.Ordinal)
+                || entry.line.Contains("FlashInterviewDbContext", StringComparison.Ordinal)
+                || entry.line.Contains("SqlSensitiveWordRepository", StringComparison.Ordinal)
+                || entry.line.Contains("SensitiveWordEntity", StringComparison.Ordinal)
+                || entry.line.Contains("SensitiveWordSeeder", StringComparison.Ordinal)
+                || entry.line.Contains("ISensitiveWordRepository", StringComparison.Ordinal))
             .Select(entry => $"{Path.GetRelativePath(TestPaths.RepositoryRoot, entry.path)}:{entry.lineNumber}: {entry.line.Trim()}")
             .ToArray();
 

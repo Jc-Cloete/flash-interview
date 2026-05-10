@@ -1,10 +1,13 @@
 using FlashInterview.Application.SensitiveWords;
+using FlashInterview.Web.Auth;
 using FlashInterview.Web.Clients;
 using FlashInterview.Web.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace FlashInterview.Web.Controllers;
 
+[Authorize(Policy = AdminAuthorizationPolicies.AdminOrSuperAdmin)]
 public sealed class AdminController(SensitiveWordsApiClient apiClient) : Controller
 {
     [HttpGet]
