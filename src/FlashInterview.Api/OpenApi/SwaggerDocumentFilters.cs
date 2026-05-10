@@ -1,3 +1,4 @@
+using FlashInterview.Application.Auth;
 using FlashInterview.Api.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.OpenApi;
@@ -46,6 +47,17 @@ internal sealed class RequestExampleOperationFilter : IOperationFilter
             return;
         }
 
+        jsonMediaType.Schema = (context.ApiDescription.HttpMethod, context.ApiDescription.RelativePath) switch
+        {
+            ("POST", "api/auth/login") => context.SchemaGenerator.GenerateSchema(
+                typeof(LoginRequest),
+                context.SchemaRepository),
+            ("POST", "api/auth/external-login/sign-in") => context.SchemaGenerator.GenerateSchema(
+                typeof(ExternalLoginRequest),
+                context.SchemaRepository),
+            _ => jsonMediaType.Schema
+        };
+
         jsonMediaType.Example = (context.ApiDescription.HttpMethod, context.ApiDescription.RelativePath) switch
         {
             ("POST", "api/sensitive-words") => JsonNode.Parse(
@@ -68,6 +80,23 @@ internal sealed class RequestExampleOperationFilter : IOperationFilter
                 """
                 {
                   "message": "Please review this SELECT * FROM example."
+                }
+                """),
+            ("POST", "api/auth/login") => JsonNode.Parse(
+                """
+                {
+                  "email": "admin@example.test",
+                  "password": "Correct_password123!"
+                }
+                """),
+            ("POST", "api/auth/external-login/sign-in") => JsonNode.Parse(
+                """
+                {
+                  "provider": "Google",
+                  "providerKey": "google-user-id",
+                  "email": "admin@example.test",
+                  "emailVerified": true,
+                  "displayName": "Admin User"
                 }
                 """),
             _ => jsonMediaType.Example
