@@ -6,10 +6,11 @@ The service stores configurable sensitive words in MSSQL and exposes:
 
 - A REST API for internal sensitive-word CRUD protected by an admin API key.
 - A rate-limited REST API endpoint for masking/blooping chat messages.
+- Local username/password authentication, optional Google sign-in with automatic plain-user provisioning, and user-management APIs owned by the API.
 - A simple MVC Admin page that manages words through the API.
 - A simple MVC mock Chat page that demonstrates masking through the API.
 
-The MVC frontend must not connect directly to the database. Database access belongs to the API/infrastructure layer only.
+The MVC frontend must not connect directly to the database. Database and Identity SQL persistence belong to the API/infrastructure layer only. The MVC app talks to the API over HTTP and signs in a local MVC cookie from authenticated user DTOs returned by the API.
 
 ## Architecture Guide
 
@@ -21,14 +22,14 @@ flowchart LR
     Web["FlashInterview.Web<br/>ASP.NET Core MVC<br/>localhost:7002"]
     Api["FlashInterview.Api<br/>ASP.NET Core Web API<br/>localhost:7001"]
     App["FlashInterview.Application<br/>contracts + masking logic"]
-    Infra["FlashInterview.Infrastructure<br/>EF Core repository + migrations + seed"]
-    Sql["MSSQL<br/>SensitiveWords table<br/>localhost:1433"]
+    Infra["FlashInterview.Infrastructure<br/>EF Core repositories + Identity store + migrations + seed"]
+    Sql["MSSQL<br/>SensitiveWords + ASP.NET Identity tables<br/>localhost:1433"]
     Swagger["Swagger UI<br/>/swagger on API only"]
 
     Browser -->|"Admin + Mock Chat pages"| Web
     Browser -->|"Swagger UI"| Swagger
     Swagger --> Api
-    Web -->|"HTTP API calls"| Api
+    Web -->|"HTTP API calls + local auth cookie"| Api
     Api --> App
     Api --> Infra
     Infra --> Sql
@@ -39,12 +40,12 @@ flowchart LR
 ```mermaid
 flowchart TB
     WebLayer["FlashInterview.Web<br/>MVC controllers, views, API client"]
-    ApiLayer["FlashInterview.Api<br/>REST controllers, auth, rate limits, Swagger"]
+    ApiLayer["FlashInterview.Api<br/>REST controllers, Identity auth APIs, rate limits, Swagger"]
     ApplicationLayer["FlashInterview.Application<br/>DTOs, requests, repository interface, masker, seed parser"]
-    InfrastructureLayer["FlashInterview.Infrastructure<br/>DbContext, EF repository, migrations, bootstrap, seeder"]
+    InfrastructureLayer["FlashInterview.Infrastructure<br/>DbContext, EF repositories, Identity SQL store, migrations, bootstrap, seeder"]
     Database["MSSQL"]
 
-    WebLayer -->|"uses application contracts only"| ApplicationLayer
+    WebLayer -->|"uses application DTOs/contracts only"| ApplicationLayer
     WebLayer -->|"calls over HTTP"| ApiLayer
     ApiLayer --> ApplicationLayer
     ApiLayer --> InfrastructureLayer
@@ -54,6 +55,8 @@ flowchart TB
     WebLayer -. "must not reference" .-> InfrastructureLayer
     WebLayer -. "must not connect to" .-> Database
 ```
+
+Identity and role persistence use ASP.NET Core IdentityCore in `FlashInterview.Infrastructure` through the API host. `FlashInterview.Web` does not reference Infrastructure, EF Core, SQL client packages, `FlashInterviewDbContext`, or sensitive-word persistence implementations; architecture tests enforce that boundary.
 
 ### Admin Data Flow
 
@@ -75,6 +78,29 @@ sequenceDiagram
     Api-->>Web: JSON response or validation problem
     Web-->>User: Render Admin page with data or validation errors
 ```
+
+### Local Auth And Identity Flow
+
+```mermaid
+sequenceDiagram
+    participant User as Admin user
+    participant Web as FlashInterview.Web
+    participant Api as FlashInterview.Api
+    participant Identity as ASP.NET Core IdentityCore
+    participant Db as MSSQL
+
+    User->>Web: Submit local login or complete Google callback
+    Web->>Api: Internal auth request with X-Admin-Api-Key
+    Api->>Identity: Verify password, link existing Google login, or create plain Google user
+    Identity->>Db: Read/write Identity users, roles, and logins
+    Db-->>Identity: Identity records
+    Identity-->>Api: Authenticated user and roles
+    Api-->>Web: AuthenticatedUserDto
+    Web->>Web: Issue local MVC auth cookie with claims
+    Web-->>User: Render protected MVC admin/user-management pages
+```
+
+`/api/messages/mask` is intentionally outside the login flow. It remains anonymous for high-throughput chat masking and is protected by request-size limits plus the configured fixed-window rate limit.
 
 ### Mock Chat Data Flow
 
@@ -167,18 +193,19 @@ src/
       SensitiveWordMasker.cs        Deterministic longest-match masking behavior
       SensitiveWordSeedParser.cs    Parser for the supplied SQL-sensitive preload file
       *Request.cs / *Response.cs    API and MVC shared contracts
-  FlashInterview.Infrastructure/    EF Core SQL Server persistence
-    FlashInterviewDbContext.cs      DbContext and schema model
+  FlashInterview.Infrastructure/    EF Core SQL Server persistence and Identity store
+    Auth/                           Identity user and initial super-admin bootstrap
+    FlashInterviewDbContext.cs      DbContext for sensitive words and Identity tables
     Migrations/                     Initial MSSQL migration and model snapshot
     DatabaseBootstrapper.cs         Optional startup migrations and idempotent seed
     SensitiveWords/                 Entity, repository, and seed importer
   FlashInterview.Api/               REST API, Swagger, Serilog, auth, rate limits, health
-    Controllers/                    Sensitive-word CRUD and message masking endpoints
+    Controllers/                    Sensitive-word, message masking, auth, and user endpoints
     OpenApi/                        Swagger operation/document filters
     Security/                       Admin API-key authentication handler
   FlashInterview.Web/               ASP.NET Core MVC frontend using API HttpClient
-    Clients/                        Typed API client with admin API-key header behavior
-    Controllers/                    Admin and mock Chat MVC controllers
+    Clients/                        Typed API clients with internal API-key header behavior
+    Controllers/                    Account, Admin, Users, and mock Chat MVC controllers
     Models/                         MVC view models
     Views/                          Razor views
 tests/
@@ -220,6 +247,15 @@ Run everything with hot reload:
 ```bash
 docker compose -f docker-compose.dev.yml up --build
 ```
+
+Codex-local helpers wrap the same development Compose file and load optional local `.env` values for initial super-admin and Google OAuth configuration:
+
+```bash
+./scripts/run-codex-dev.sh
+./scripts/cleanup-codex-dev.sh
+```
+
+`cleanup-codex-dev.sh` preserves named volumes by default, including MSSQL data and ASP.NET Core Data Protection keys. Use `./scripts/cleanup-codex-dev.sh --volumes` only when you want a full local reset; that also invalidates existing MVC auth and antiforgery cookies.
 
 ## Performance Lab
 
@@ -283,8 +319,8 @@ Development URLs:
 - MSSQL: `localhost,1433`
 
 The development API container runs `dotnet watch`, applies EF Core migrations on startup, and seeds `/workspace/docs/sql_sensitive_list.txt` when `Database__ApplyMigrationsOnStartup=true` and `Database__SeedOnStartup=true`.
-The Compose file mounts project `bin/` and `obj/` directories to named Docker volumes so container restore/build metadata does not overwrite host-side .NET build metadata.
-Development Compose sets a local-only admin API key for API/Web communication.
+The Compose file mounts project `bin/` and `obj/` directories to named Docker volumes so container restore/build metadata does not overwrite host-side .NET build metadata. It also persists ASP.NET Core Data Protection keys in named volumes so hot-reload/container restarts do not invalidate MVC auth and antiforgery cookies.
+Development Compose sets a local-only admin API key for API/Web communication. Initial super-admin bootstrap and Google OAuth are disabled unless the related environment variables are supplied.
 
 On Apple Silicon, the MSSQL container uses `platform: linux/amd64`, so Docker runs it through emulation.
 
@@ -317,6 +353,9 @@ Set `MSSQL_SA_PASSWORD` before running in any shared environment:
 ```bash
 export MSSQL_SA_PASSWORD='replace-with-a-real-secret'
 export FLASHINTERVIEW_ADMIN_API_KEY='replace-with-a-real-admin-key'
+export INITIAL_SUPER_ADMIN_ENABLED='true'
+export INITIAL_SUPER_ADMIN_EMAIL='admin@example.com'
+export INITIAL_SUPER_ADMIN_PASSWORD='replace-with-a-real-bootstrap-password'
 docker compose up --build
 ```
 
@@ -363,6 +402,9 @@ API configuration:
 - `Database__SeedOnStartup`: set to `true` to run the idempotent preload after the migration step.
 - `Database__SeedFile`: path to the preload file.
 - `Security__AdminApiKey`: required API key for internal sensitive-word CRUD. If missing, protected endpoints fail closed.
+- `Security__InitialSuperAdmin__Enabled`: set to `true` in a controlled bootstrap step to create/update the initial super-admin account.
+- `Security__InitialSuperAdmin__Email`: initial super-admin email address.
+- `Security__InitialSuperAdmin__Password`: initial super-admin password. Supply through environment variables or secrets management, not source control.
 - `Security__MaskRateLimit__PermitLimit`: fixed-window permit count for `POST /api/messages/mask`, default `60`.
 - `Security__MaskRateLimit__WindowSeconds`: fixed-window length in seconds for `POST /api/messages/mask`, default `60`.
 - `OpenTelemetry__ServiceName`: service name shown in the Aspire Dashboard.
@@ -371,7 +413,11 @@ API configuration:
 MVC configuration:
 
 - `SensitiveWordsApi__BaseUrl`: base URL for the REST API.
-- `SensitiveWordsApi__AdminApiKey`: API key sent only on MVC Admin CRUD/list requests. Production deployments must supply this through environment variables or secrets management; the checked-in production appsettings value is only a placeholder.
+- `SensitiveWordsApi__AdminApiKey`: API key sent only on MVC-to-API internal requests such as Admin CRUD, local login, external sign-in, and user management. Production deployments must supply this through environment variables or secrets management; the checked-in production appsettings value is only a placeholder.
+- `Authentication__Google__ClientId`: optional Google OAuth client id. Leave blank to hide/disable Google sign-in.
+- `Authentication__Google__ClientSecret`: optional Google OAuth client secret. Leave blank to hide/disable Google sign-in.
+
+API/Infrastructure own password verification, Identity SQL persistence, Google-login linking/provisioning, role assignment, and user-management APIs. Verified Google emails can create plain non-admin users automatically; admins can promote users through user management. The MVC frontend uses HTTP plus its own local cookie; it must not reference EF Core, SQL clients, Infrastructure, `FlashInterviewDbContext`, or sensitive-word persistence implementations.
 
 ## Logging
 
@@ -400,6 +446,14 @@ Sensitive-word CRUD:
 
 These internal endpoints require the `X-Admin-Api-Key` header.
 
+Internal auth and user-management APIs:
+
+- `POST /api/auth/login`
+- `POST /api/auth/external-login/sign-in`
+- User-management endpoints under `/api/users`
+
+These endpoints are for the MVC frontend and require the `X-Admin-Api-Key` header. Identity state is stored through the API/Infrastructure MSSQL path, not by the MVC project.
+
 Masking endpoint:
 
 - `POST /api/messages/mask`
@@ -420,6 +474,7 @@ The current xUnit suite covers:
 
 - Sensitive-word normalization, seed parsing, and deterministic masking edge cases.
 - REST API surface behavior, admin API-key protection, and mask rate limiting using `WebApplicationFactory` with a fake repository, so endpoint checks do not require MSSQL.
+- Identity bootstrap, internal auth APIs, MVC cookie login/logout, optional Google configuration, and user-management authorization.
 - Optional MSSQL-backed API and preload integration coverage using isolated test databases when local SQL Server is available.
 - CI starts a SQL Server service container so MSSQL-backed CRUD, migration, and seed tests run in pull-request checks instead of being silently skipped.
 - MVC project architecture guards that prevent direct EF Core, SQL Server, or infrastructure references in the frontend.
@@ -428,4 +483,4 @@ The current xUnit suite covers:
 
 ## Current Codebase Status
 
-The scaffold is compile-ready and includes core deterministic masking behavior, REST API surface tests, admin API-key protection for internal CRUD, rate limiting for the mask endpoint, completed basic Admin management workflows, frontend database-boundary checks, and an initial EF Core migration for the MSSQL schema. Database bootstrap uses controlled `MigrateAsync` startup behavior when explicitly enabled; production-style Compose leaves it disabled by default. The mask endpoint uses a cached compiled matcher that is invalidated after sensitive-word writes, so normal chat requests do not rebuild the active word list on every call.
+The scaffold is compile-ready and includes core deterministic masking behavior, REST API surface tests, admin API-key protection for internal CRUD and auth/user-management APIs, rate limiting for the mask endpoint, completed basic Admin management workflows, frontend database-boundary checks, and EF Core migrations for the MSSQL schema. Database bootstrap uses controlled `MigrateAsync` startup behavior when explicitly enabled; production-style Compose leaves it disabled by default. The mask endpoint uses a cached compiled matcher that is invalidated after sensitive-word writes, so normal chat requests do not rebuild the active word list on every call.

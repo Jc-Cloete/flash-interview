@@ -29,6 +29,9 @@ services:
       Database__SeedOnStartup: "true"
       Database__SeedFile: "/workspace/docs/sql_sensitive_list.txt"
       Security__AdminApiKey: "local-dev-admin-key"
+      Security__InitialSuperAdmin__Enabled: "${INITIAL_SUPER_ADMIN_ENABLED:-false}"
+      Security__InitialSuperAdmin__Email: "${INITIAL_SUPER_ADMIN_EMAIL:-}"
+      Security__InitialSuperAdmin__Password: "${INITIAL_SUPER_ADMIN_PASSWORD:-}"
       Security__MaskRateLimit__PermitLimit: "60"
       Security__MaskRateLimit__WindowSeconds: "60"
     depends_on:
@@ -51,6 +54,7 @@ services:
       - infrastructure-obj:/workspace/src/FlashInterview.Infrastructure/obj
       - api-bin:/workspace/src/FlashInterview.Api/bin
       - api-obj:/workspace/src/FlashInterview.Api/obj
+      - api-data-protection-keys:/root/.aspnet/DataProtection-Keys
 
   web:
     build:
@@ -61,6 +65,8 @@ services:
       DOTNET_WATCH_SUPPRESS_LAUNCH_BROWSER: "true"
       SensitiveWordsApi__BaseUrl: "http://api:8080/"
       SensitiveWordsApi__AdminApiKey: "local-dev-admin-key"
+      Authentication__Google__ClientId: "${GOOGLE_CLIENT_ID:-}"
+      Authentication__Google__ClientSecret: "${GOOGLE_CLIENT_SECRET:-}"
     depends_on:
       api:
         condition: service_healthy
@@ -73,9 +79,12 @@ services:
       - web-application-obj:/workspace/src/FlashInterview.Application/obj
       - web-bin:/workspace/src/FlashInterview.Web/bin
       - web-obj:/workspace/src/FlashInterview.Web/obj
+      - web-data-protection-keys:/root/.aspnet/DataProtection-Keys
 
 volumes:
   mssql-data:
+  api-data-protection-keys:
+  web-data-protection-keys:
   api-nuget:
   web-nuget:
   application-bin:
