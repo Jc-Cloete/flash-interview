@@ -4,6 +4,7 @@ using FlashInterview.Web.Clients;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Google;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Diagnostics;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
@@ -74,6 +75,13 @@ builder.Services
     });
 
 builder.Services.AddControllersWithViews();
+var dataProtectionKeysPath = builder.Configuration["DataProtection:KeysPath"];
+if (!string.IsNullOrWhiteSpace(dataProtectionKeysPath))
+{
+    builder.Services.AddDataProtection()
+        .PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeysPath));
+}
+
 builder.Services.Configure<SensitiveWordsApiOptions>(
     builder.Configuration.GetSection(SensitiveWordsApiOptions.SectionName));
 builder.Services.Configure<AuthApiOptions>(
@@ -104,6 +112,11 @@ builder.Services.AddHttpClient<AuthApiClient>((serviceProvider, client) =>
     if (string.IsNullOrWhiteSpace(options.BaseUrl))
     {
         throw new InvalidOperationException("Auth API base URL is required.");
+    }
+
+    if (string.IsNullOrWhiteSpace(options.AdminApiKey))
+    {
+        throw new InvalidOperationException("Auth API admin API key is required.");
     }
 
     client.BaseAddress = new Uri(options.BaseUrl);

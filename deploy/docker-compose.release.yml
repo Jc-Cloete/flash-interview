@@ -53,12 +53,16 @@ services:
       SensitiveWordsApi__AdminApiKey: "${FLASHINTERVIEW_ADMIN_API_KEY:?set FLASHINTERVIEW_ADMIN_API_KEY}"
       Authentication__Google__ClientId: "${GOOGLE_CLIENT_ID:-}"
       Authentication__Google__ClientSecret: "${GOOGLE_CLIENT_SECRET:-}"
+      DataProtection__KeysPath: "/root/.aspnet/DataProtection-Keys"
     depends_on:
       api:
         condition: service_healthy
+    volumes:
+      - web-data-protection-keys:/root/.aspnet/DataProtection-Keys
     ports:
       - "8081:8080"
     restart: unless-stopped
 
 volumes:
   mssql-data:
+  web-data-protection-keys:

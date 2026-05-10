@@ -5,6 +5,7 @@ using FlashInterview.Infrastructure.Auth;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Data.Sqlite;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -12,6 +13,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Hosting;
 using System.Net;
 using System.Net.Http.Json;
 
@@ -173,6 +175,25 @@ public sealed class AuthApiTests
     }
 
     [Fact]
+    public async Task ExternalSignInEndpoint_SupportsLegacyRoute()
+    {
+        await using var factory = new AuthApiFactory(AdminApiKey);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+
+        using var response = await PostExternalSignInAsync(
+            client,
+            new ExternalLoginRequest(
+                "Google",
+                "google-user-1",
+                "legacy-user@example.test",
+                EmailVerified: true,
+                "Legacy User"),
+            "/api/auth/external/sign-in");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
     public async Task ExternalSignInEndpoint_RejectsUnverifiedExternalEmail()
     {
         await using var factory = new AuthApiFactory(AdminApiKey);
@@ -304,17 +325,17 @@ public sealed class AuthApiTests
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
         using var grantResponse = await UpdateAdminRoleAsync(client, userId, isAdmin: true);
+        Assert.Equal(HttpStatusCode.OK, grantResponse.StatusCode);
         var grantedUser = await grantResponse.Content.ReadFromJsonAsync<UserListItemDto>();
         var grantSecurityStamp = await factory.GetSecurityStampAsync("user@example.test");
         using var revokeResponse = await UpdateAdminRoleAsync(client, userId, isAdmin: false);
+        Assert.Equal(HttpStatusCode.OK, revokeResponse.StatusCode);
         var revokedUser = await revokeResponse.Content.ReadFromJsonAsync<UserListItemDto>();
         var revokeSecurityStamp = await factory.GetSecurityStampAsync("user@example.test");
 
-        Assert.Equal(HttpStatusCode.OK, grantResponse.StatusCode);
         Assert.NotNull(grantedUser);
         Assert.Contains(ApplicationRoles.Admin, grantedUser.Roles);
         Assert.NotEqual(initialSecurityStamp, grantSecurityStamp);
-        Assert.Equal(HttpStatusCode.OK, revokeResponse.StatusCode);
         Assert.NotNull(revokedUser);
         Assert.DoesNotContain(ApplicationRoles.Admin, revokedUser.Roles);
         Assert.NotEqual(grantSecurityStamp, revokeSecurityStamp);
@@ -441,14 +462,19 @@ public sealed class AuthApiTests
             .AddInMemoryCollection(configurationValues)
             .Build();
         var services = new ServiceCollection();
-        var databaseName = $"FlashInterviewAuthTests_{Guid.NewGuid():N}";
 
         services.AddLogging();
         services.AddDataProtection();
         services.AddSingleton<IConfiguration>(configuration);
         services.Configure<InitialSuperAdminOptions>(configuration.GetSection(InitialSuperAdminOptions.SectionName));
-        services.AddDbContext<FlashInterviewDbContext>(options =>
-            options.UseInMemoryDatabase(databaseName));
+        services.AddSingleton(_ =>
+        {
+            var connection = new SqliteConnection("DataSource=:memory:");
+            connection.Open();
+            return connection;
+        });
+        services.AddDbContext<FlashInterviewDbContext>((serviceProvider, options) =>
+            options.UseSqlite(serviceProvider.GetRequiredService<SqliteConnection>()));
         services
             .AddIdentityCore<FlashInterviewUser>()
             .AddRoles<IdentityRole>()
@@ -456,7 +482,11 @@ public sealed class AuthApiTests
             .AddDefaultTokenProviders()
             .AddSignInManager();
 
-        return services.BuildServiceProvider(validateScopes: true);
+        var serviceProvider = services.BuildServiceProvider(validateScopes: true);
+        using var scope = serviceProvider.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<FlashInterviewDbContext>();
+        dbContext.Database.EnsureCreated();
+        return serviceProvider;
     }
 
     private static async Task RunBootstrapperAsync(ServiceProvider services)
@@ -486,9 +516,10 @@ public sealed class AuthApiTests
 
     private static async Task<HttpResponseMessage> PostExternalSignInAsync(
         HttpClient client,
-        ExternalLoginRequest externalLogin)
+        ExternalLoginRequest externalLogin,
+        string path = "/api/auth/external-login/sign-in")
     {
-        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/auth/external-login/sign-in")
+        using var request = new HttpRequestMessage(HttpMethod.Post, path)
         {
             Content = JsonContent.Create(externalLogin)
         };
@@ -542,7 +573,7 @@ public sealed class AuthApiTests
 
     private sealed class AuthApiFactory(string adminApiKey) : WebApplicationFactory<Program>
     {
-        private readonly string databaseName = $"FlashInterviewAuthApiTests_{Guid.NewGuid():N}";
+        private readonly SqliteConnection sqliteConnection = new("DataSource=:memory:");
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -563,10 +594,29 @@ public sealed class AuthApiTests
                 services.RemoveAll<Microsoft.EntityFrameworkCore.Infrastructure.IDbContextOptionsConfiguration<FlashInterviewDbContext>>();
                 services.RemoveAll<DbContextOptions<FlashInterviewDbContext>>();
                 services.RemoveAll<ISensitiveWordRepository>();
+                sqliteConnection.Open();
                 services.AddDbContext<FlashInterviewDbContext>(options =>
-                    options.UseInMemoryDatabase(databaseName));
+                    options.UseSqlite(sqliteConnection));
                 services.AddSingleton<ISensitiveWordRepository, EmptySensitiveWordRepository>();
             });
+        }
+
+        protected override IHost CreateHost(IHostBuilder builder)
+        {
+            var host = base.CreateHost(builder);
+            using var scope = host.Services.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<FlashInterviewDbContext>();
+            dbContext.Database.EnsureCreated();
+            return host;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            base.Dispose(disposing);
+            if (disposing)
+            {
+                sqliteConnection.Dispose();
+            }
         }
 
         public async Task<string> SeedUserAsync(

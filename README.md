@@ -416,6 +416,7 @@ MVC configuration:
 - `SensitiveWordsApi__AdminApiKey`: API key sent only on MVC-to-API internal requests such as Admin CRUD, local login, external sign-in, and user management. Production deployments must supply this through environment variables or secrets management; the checked-in production appsettings value is only a placeholder.
 - `Authentication__Google__ClientId`: optional Google OAuth client id. Leave blank to hide/disable Google sign-in.
 - `Authentication__Google__ClientSecret`: optional Google OAuth client secret. Leave blank to hide/disable Google sign-in.
+- `DataProtection__KeysPath`: optional persistent ASP.NET Core Data Protection key-ring path for MVC auth cookies and OAuth state. The release Compose template mounts this at `/root/.aspnet/DataProtection-Keys`.
 
 API/Infrastructure own password verification, Identity SQL persistence, Google-login linking/provisioning, role assignment, and user-management APIs. Verified Google emails can create plain non-admin users automatically; admins can promote users through user management. The MVC frontend uses HTTP plus its own local cookie; it must not reference EF Core, SQL clients, Infrastructure, `FlashInterviewDbContext`, or sensitive-word persistence implementations.
 

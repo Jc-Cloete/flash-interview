@@ -19,7 +19,9 @@ public sealed class WebProjectArchitectureTests
         var unexpectedProjectReferences = projectReferences
             .Where(reference =>
             {
-                var normalizedReference = reference.Replace('\\', Path.DirectorySeparatorChar);
+                var normalizedReference = reference
+                    .Replace('\\', Path.DirectorySeparatorChar)
+                    .Replace('/', Path.DirectorySeparatorChar);
                 return !normalizedReference.EndsWith(
                     Path.Combine("FlashInterview.Application", "FlashInterview.Application.csproj"),
                     StringComparison.OrdinalIgnoreCase);
