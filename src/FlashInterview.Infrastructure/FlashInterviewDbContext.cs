@@ -1,14 +1,26 @@
 using FlashInterview.Infrastructure.SensitiveWords;
+using FlashInterview.Infrastructure.Auth;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
 namespace FlashInterview.Infrastructure;
 
-public sealed class FlashInterviewDbContext(DbContextOptions<FlashInterviewDbContext> options) : DbContext(options)
+public sealed class FlashInterviewDbContext(DbContextOptions<FlashInterviewDbContext> options)
+    : IdentityDbContext<FlashInterviewUser>(options)
 {
     public DbSet<SensitiveWordEntity> SensitiveWords => Set<SensitiveWordEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        base.OnModelCreating(modelBuilder);
+
+        modelBuilder.Entity<FlashInterviewUser>(entity =>
+        {
+            entity.Property(user => user.DisplayName).HasMaxLength(256);
+            entity.Property(user => user.CreatedAt).IsRequired();
+            entity.Property(user => user.UpdatedAt).IsRequired();
+        });
+
         modelBuilder.Entity<SensitiveWordEntity>(entity =>
         {
             entity.ToTable("SensitiveWords");

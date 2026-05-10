@@ -1,0 +1,59 @@
+@model UserManagementIndexViewModel
+
+@{
+    ViewData["Title"] = "Users";
+}
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+    <h1 class="h3 mb-0">Users</h1>
+    <a class="btn btn-primary" asp-action="Create">Add user</a>
+</div>
+
+<div class="table-responsive">
+    <table class="table table-sm align-middle">
+        <thead>
+            <tr>
+                <th scope="col">Email</th>
+                <th scope="col">Display name</th>
+                <th scope="col">Status</th>
+                <th scope="col">Roles</th>
+                <th scope="col" class="text-end">Admin</th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var user in Model.Users)
+        {
+            <tr>
+                <td>@user.Email</td>
+                <td>@(string.IsNullOrWhiteSpace(user.DisplayName) ? "-" : user.DisplayName)</td>
+                <td>
+                    @if (user.IsLockedOut)
+                    {
+                        <span class="badge text-bg-warning">Locked out</span>
+                    }
+                    else
+                    {
+                        <span class="badge text-bg-success">Active</span>
+                    }
+                </td>
+                <td>@user.RoleSummary</td>
+                <td class="text-end">
+                    <form asp-action="UpdateAdminRole" method="post" class="d-inline">
+                        <input type="hidden" name="Id" value="@user.Id" />
+                        <input type="hidden" name="IsAdmin" value="@((!user.IsAdmin).ToString().ToLowerInvariant())" />
+                        @if (user.IsAdmin)
+                        {
+                            <button type="submit" class="btn btn-sm btn-outline-danger">Revoke Admin</button>
+                        }
+                        else
+                        {
+                            <button type="submit" class="btn btn-sm btn-outline-primary">Grant Admin</button>
+                        }
+                    </form>
+                    <a class="btn btn-sm btn-outline-secondary" asp-action="Edit" asp-route-id="@user.Id">Edit</a>
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>

@@ -26,6 +26,9 @@ services:
       Database__SeedOnStartup: "${DATABASE_SEED_ON_STARTUP:-false}"
       Database__SeedFile: "docs/sql_sensitive_list.txt"
       Security__AdminApiKey: "${FLASHINTERVIEW_ADMIN_API_KEY:?set FLASHINTERVIEW_ADMIN_API_KEY}"
+      Security__InitialSuperAdmin__Enabled: "${INITIAL_SUPER_ADMIN_ENABLED:-false}"
+      Security__InitialSuperAdmin__Email: "${INITIAL_SUPER_ADMIN_EMAIL:-}"
+      Security__InitialSuperAdmin__Password: "${INITIAL_SUPER_ADMIN_PASSWORD:-}"
       Security__MaskRateLimit__PermitLimit: "${MASK_RATE_LIMIT_PERMIT_LIMIT:-60}"
       Security__MaskRateLimit__WindowSeconds: "${MASK_RATE_LIMIT_WINDOW_SECONDS:-60}"
     depends_on:
@@ -48,12 +51,18 @@ services:
       ASPNETCORE_URLS: "http://+:8080"
       SensitiveWordsApi__BaseUrl: "http://api:8080/"
       SensitiveWordsApi__AdminApiKey: "${FLASHINTERVIEW_ADMIN_API_KEY:?set FLASHINTERVIEW_ADMIN_API_KEY}"
+      Authentication__Google__ClientId: "${GOOGLE_CLIENT_ID:-}"
+      Authentication__Google__ClientSecret: "${GOOGLE_CLIENT_SECRET:-}"
+      DataProtection__KeysPath: "/root/.aspnet/DataProtection-Keys"
     depends_on:
       api:
         condition: service_healthy
+    volumes:
+      - web-data-protection-keys:/root/.aspnet/DataProtection-Keys
     ports:
       - "8081:8080"
     restart: unless-stopped
 
 volumes:
   mssql-data:
+  web-data-protection-keys:

@@ -506,19 +506,31 @@ public sealed class ApiSurfaceTests
         AssertOperation(paths, "/api/sensitive-words/{id}", "put", "200", "400", "401", "404");
         AssertOperation(paths, "/api/sensitive-words/{id}", "delete", "204", "401", "404");
         AssertOperation(paths, "/api/messages/mask", "post", "200", "400", "413", "429");
+        AssertOperation(paths, "/api/auth/login", "post", "200", "400", "401");
+        AssertOperation(paths, "/api/auth/external-login/sign-in", "post", "200", "400", "401");
+        AssertOperation(paths, "/api/users", "get", "200", "401");
+        AssertOperation(paths, "/api/users", "post", "201", "400", "401", "409");
+        AssertOperation(paths, "/api/users/{id}/roles/admin", "put", "200", "400", "401", "404");
+        Assert.False(paths.TryGetProperty("/api/users/{id}/roles/super-admin", out _));
         AssertOperation(paths, "/healthz", "get", "200");
         AssertOperation(paths, "/readyz", "get", "200", "503");
 
         var schemas = document.RootElement.GetProperty("components").GetProperty("schemas");
+        Assert.True(schemas.TryGetProperty("AuthenticatedUserDto", out _));
         Assert.True(schemas.TryGetProperty("CreateSensitiveWordRequest", out _));
+        Assert.True(schemas.TryGetProperty("CreateUserRequest", out _));
+        Assert.True(schemas.TryGetProperty("ExternalLoginRequest", out _));
+        Assert.True(schemas.TryGetProperty("LoginRequest", out _));
         Assert.True(schemas.TryGetProperty("UpdateSensitiveWordRequest", out _));
         Assert.True(schemas.TryGetProperty("MaskMessageRequest", out _));
         Assert.True(schemas.TryGetProperty("MaskMessageResponse", out _));
         Assert.True(schemas.TryGetProperty("SensitiveWordDto", out _));
+        Assert.True(schemas.TryGetProperty("UserListItemDto", out _));
+        Assert.True(schemas.TryGetProperty("UserRoleUpdateRequest", out _));
     }
 
     [Fact]
-    public async Task SwaggerDocument_DescribesAdminApiKeySecurityOnlyOnSensitiveWordOperations()
+    public async Task SwaggerDocument_DescribesAdminApiKeySecurityOnInternalOperationsOnly()
     {
         using var factory = new FlashInterviewApiFactory(new FakeSensitiveWordRepository(), AdminApiKey, environment: "Development");
         using var client = factory.CreateHttpsClient();
@@ -544,7 +556,12 @@ public sealed class ApiSurfaceTests
             ("/api/sensitive-words", "post"),
             ("/api/sensitive-words/{id}", "get"),
             ("/api/sensitive-words/{id}", "put"),
-            ("/api/sensitive-words/{id}", "delete")
+            ("/api/sensitive-words/{id}", "delete"),
+            ("/api/auth/login", "post"),
+            ("/api/auth/external-login/sign-in", "post"),
+            ("/api/users", "get"),
+            ("/api/users", "post"),
+            ("/api/users/{id}/roles/admin", "put")
         })
         {
             var operation = paths.GetProperty(path).GetProperty(method);
