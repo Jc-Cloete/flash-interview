@@ -261,6 +261,8 @@ public sealed class AuthApiTests
                 IsAdmin: true));
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.NotNull(response.Headers.Location);
+        Assert.StartsWith("/api/users/", response.Headers.Location.OriginalString, StringComparison.Ordinal);
         var user = await response.Content.ReadFromJsonAsync<UserListItemDto>();
         Assert.NotNull(user);
         Assert.Equal("created@example.test", user.Email);

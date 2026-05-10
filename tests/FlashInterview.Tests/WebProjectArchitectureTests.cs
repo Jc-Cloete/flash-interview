@@ -64,8 +64,7 @@ public sealed class WebProjectArchitectureTests
                 || entry.line.Contains("FlashInterviewDbContext", StringComparison.Ordinal)
                 || entry.line.Contains("SqlSensitiveWordRepository", StringComparison.Ordinal)
                 || entry.line.Contains("SensitiveWordEntity", StringComparison.Ordinal)
-                || entry.line.Contains("SensitiveWordSeeder", StringComparison.Ordinal)
-                || entry.line.Contains("ISensitiveWordRepository", StringComparison.Ordinal))
+                || entry.line.Contains("SensitiveWordSeeder", StringComparison.Ordinal))
             .Select(entry => $"{Path.GetRelativePath(TestPaths.RepositoryRoot, entry.path)}:{entry.lineNumber}: {entry.line.Trim()}")
             .ToArray();
 

@@ -18,7 +18,7 @@ export INITIAL_SUPER_ADMIN_PASSWORD="${INITIAL_SUPER_ADMIN_PASSWORD:-Admin_passw
 cd "${repo_root}"
 
 printf 'Starting Flash Interview dev stack.\n'
-printf 'Local admin: %s / %s\n' "${INITIAL_SUPER_ADMIN_EMAIL}" "${INITIAL_SUPER_ADMIN_PASSWORD}"
+printf 'Local admin: %s / <password set>\n' "${INITIAL_SUPER_ADMIN_EMAIL}"
 
 if [[ -n "${GOOGLE_CLIENT_ID:-}" && -n "${GOOGLE_CLIENT_SECRET:-}" ]]; then
   printf 'Google sign-in: enabled\n'

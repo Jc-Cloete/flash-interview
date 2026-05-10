@@ -161,7 +161,17 @@ public sealed class AuthController(
         if (string.IsNullOrWhiteSpace(user.DisplayName) && !string.IsNullOrWhiteSpace(request.DisplayName))
         {
             user.DisplayName = request.DisplayName.Trim();
-            await userManager.UpdateAsync(user);
+            user.UpdatedAt = DateTimeOffset.UtcNow;
+            var updateResult = await userManager.UpdateAsync(user);
+            if (!updateResult.Succeeded)
+            {
+                foreach (var error in updateResult.Errors)
+                {
+                    ModelState.AddModelError(string.Empty, error.Description);
+                }
+
+                return ValidationProblem(ModelState);
+            }
         }
 
         return Ok(await CreateAuthenticatedUserAsync(user));

@@ -1,5 +1,6 @@
 using FlashInterview.Api.Security;
 using FlashInterview.Application.Auth;
+using FlashInterview.Infrastructure;
 using FlashInterview.Infrastructure.Auth;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -15,7 +16,8 @@ namespace FlashInterview.Api.Controllers;
 [Authorize(Policy = AuthorizationPolicies.AdminApiKey)]
 public sealed class UsersController(
     UserManager<FlashInterviewUser> userManager,
-    RoleManager<IdentityRole> roleManager) : ControllerBase
+    RoleManager<IdentityRole> roleManager,
+    FlashInterviewDbContext dbContext) : ControllerBase
 {
     [HttpGet]
     [SwaggerOperation(Summary = "List users", Description = "Lists application users for internal user management.")]
@@ -27,12 +29,27 @@ public sealed class UsersController(
             .OrderBy(user => user.Email)
             .ThenBy(user => user.Id)
             .ToListAsync(cancellationToken);
-        var userDtos = new List<UserListItemDto>(users.Count);
+        var userIds = users.Select(user => user.Id).ToArray();
+        var roleRows = await dbContext.UserRoles
+            .Where(userRole => userIds.Contains(userRole.UserId))
+            .Join(
+                dbContext.Roles,
+                userRole => userRole.RoleId,
+                role => role.Id,
+                (userRole, role) => new { userRole.UserId, role.Name })
+            .ToListAsync(cancellationToken);
+        var rolesByUserId = roleRows
+            .Where(row => !string.IsNullOrWhiteSpace(row.Name))
+            .GroupBy(row => row.UserId)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Select(row => row.Name!).Order(StringComparer.Ordinal).ToArray());
 
-        foreach (var user in users)
-        {
-            userDtos.Add(await CreateUserListItemAsync(user));
-        }
+        var userDtos = users
+            .Select(user => CreateUserListItem(
+                user,
+                rolesByUserId.GetValueOrDefault(user.Id) ?? []))
+            .ToArray();
 
         return Ok(userDtos);
     }
@@ -83,7 +100,7 @@ public sealed class UsersController(
         }
 
         var createdUser = await CreateUserListItemAsync(user);
-        return CreatedAtAction(nameof(List), new { id = user.Id }, createdUser);
+        return Created($"/api/users/{Uri.EscapeDataString(user.Id)}", createdUser);
     }
 
     [HttpPut("{id}/roles/admin")]
@@ -139,6 +156,12 @@ public sealed class UsersController(
     private async Task<UserListItemDto> CreateUserListItemAsync(FlashInterviewUser user)
     {
         var roles = await userManager.GetRolesAsync(user);
+
+        return CreateUserListItem(user, roles.Order(StringComparer.Ordinal).ToArray());
+    }
+
+    private static UserListItemDto CreateUserListItem(FlashInterviewUser user, IReadOnlyList<string> roles)
+    {
         var isLockedOut = user.LockoutEnd.HasValue && user.LockoutEnd.Value > DateTimeOffset.UtcNow;
 
         return new UserListItemDto(
@@ -146,7 +169,7 @@ public sealed class UsersController(
             user.Email ?? user.UserName ?? "",
             user.DisplayName,
             isLockedOut,
-            roles.Order(StringComparer.Ordinal).ToArray());
+            roles);
     }
 
     private async Task EnsureRoleExistsAsync(string role)
