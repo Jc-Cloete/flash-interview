@@ -28,6 +28,8 @@ This run did **not** find a saturation point. The tested profile stayed well wit
 
 The observability overlay raises the local mask rate limit to avoid measuring the default per-client throttle during capacity tests.
 
+Current repository note: the performance lab now exports structured application logs to Aspire in addition to metrics and traces. This report remains a historical baseline from the original capacity run and uses the persisted artifacts listed below as its source of record.
+
 ## Artifacts
 
 - NBomber HTML report: `artifacts/performance/capacity-20260509125635/flash-interview-capacity-20260509125635.html`
@@ -121,7 +123,7 @@ As a rough user-facing translation:
 3. **Admin listing is the heavier endpoint.** It has larger responses and higher latency than masking.
 4. **The database is not currently stressed.** MSSQL CPU remained modest during admin list load.
 5. **The API has headroom.** Peak sampled API CPU was 26.44%, with p99 mask latency still near 4 ms.
-6. **Dashboard instrumentation is ready for tuning.** The Aspire Dashboard can now be used during future runs to inspect traces, runtime counters, EF spans, and custom masking metrics.
+6. **Dashboard instrumentation is ready for tuning.** The Aspire Dashboard can now be used during future runs to inspect structured logs, traces, runtime counters, EF spans, and custom masking metrics.
 
 ## Limitations
 

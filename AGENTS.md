@@ -27,8 +27,10 @@ src/FlashInterview.Infrastructure   EF Core SQL Server persistence
 src/FlashInterview.Api              REST API, Swagger, Serilog, health
 src/FlashInterview.Web              MVC frontend using API HttpClient
 tests/FlashInterview.Tests          xUnit tests
+tests/FlashInterview.PerformanceTests BenchmarkDotNet and NBomber performance lab
 .github/workflows                   PR checks and release container publishing
 deploy                              Release compose template and env example
+docker-compose.observability.yml    Optional Aspire Dashboard telemetry overlay
 ```
 
 ## Verification Commands

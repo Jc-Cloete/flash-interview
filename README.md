@@ -157,7 +157,10 @@ deploy/
   docker-compose.release.yml        Compose template using published image references
   release.env.example               Release environment variable template
 docker-compose.dev.yml              Hot-reload local API, Web, and MSSQL stack
+docker-compose.observability.yml    Optional Aspire Dashboard telemetry overlay
 docker-compose.yml                  Production-shaped local Compose smoke test
+scripts/
+  run-local-smoke.sh                 Evaluator-friendly local smoke test helper
 src/
   FlashInterview.Application/       Shared contracts, interfaces, seed parsing, masking logic
     SensitiveWords/
@@ -185,8 +188,12 @@ tests/
     MssqlApiIntegrationTests.cs     Optional MSSQL-backed CRUD/migration/seed coverage
     SensitiveWord*Tests.cs          Masking, normalization, and seed parser tests
     WebProjectArchitectureTests.cs  Frontend database-boundary guard
+  FlashInterview.PerformanceTests/  Opt-in BenchmarkDotNet and NBomber performance lab
+    MaskerBenchmarks.cs             In-process masking microbenchmarks
+    LoadTests/                      API load profiles and report generation
 docs/
   spec.md                           Product and delivery specification
+  performance-capacity-report-2026-05-09.md Baseline local performance report
   sql_sensitive_list.txt            SQL-sensitive preload list
 ```
 
@@ -218,9 +225,9 @@ docker compose -f docker-compose.dev.yml up --build
 
 The performance lab is opt-in. It combines live observability with repeatable load reports:
 
-- Aspire Dashboard receives OpenTelemetry metrics and traces from the API and MVC web app.
+- Aspire Dashboard receives OpenTelemetry metrics, traces, and structured application logs from the API and MVC web app.
 - API traces include ASP.NET request spans and EF Core database spans so database timing is visible.
-- API metrics include request rates, request duration, runtime counters, HTTP client metrics, and masking-specific counters/histograms.
+- API telemetry includes request rates, request duration, runtime counters, HTTP client metrics, structured request logs, and masking-specific counters/histograms.
 - BenchmarkDotNet measures the in-process masking engine without HTTP or SQL Server noise.
 - NBomber drives HTTP load against the running API and writes throughput, latency, percentile, success-rate, and saturation reports.
 
@@ -264,7 +271,7 @@ Run the capacity ramp profile:
 dotnet run --project tests/FlashInterview.PerformanceTests -- load --base-url http://localhost:7001 --admin-api-key local-dev-admin-key --profile capacity
 ```
 
-Use NBomber reports for high-level throughput, request latency, percentiles, success rate, and saturation points. Use the Aspire Dashboard during the same run to inspect API request metrics, trace waterfalls, MVC-to-API calls, EF Core database spans, runtime counters, and masking-specific histograms.
+Use NBomber reports for high-level throughput, request latency, percentiles, success rate, and saturation points. Use the Aspire Dashboard during the same run to inspect structured logs, API request metrics, trace waterfalls, MVC-to-API calls, EF Core database spans, runtime counters, and masking-specific histograms.
 
 Reports are written to `artifacts/performance/`. BenchmarkDotNet writes to `BenchmarkDotNet.Artifacts/`. Both folders are local artifacts and are not committed.
 
@@ -358,6 +365,8 @@ API configuration:
 - `Security__AdminApiKey`: required API key for internal sensitive-word CRUD. If missing, protected endpoints fail closed.
 - `Security__MaskRateLimit__PermitLimit`: fixed-window permit count for `POST /api/messages/mask`, default `60`.
 - `Security__MaskRateLimit__WindowSeconds`: fixed-window length in seconds for `POST /api/messages/mask`, default `60`.
+- `OpenTelemetry__ServiceName`: service name shown in the Aspire Dashboard.
+- `OpenTelemetry__OtlpEndpoint`: OTLP endpoint for logs, metrics, and traces. Leave unset to disable export.
 
 MVC configuration:
 
@@ -372,6 +381,8 @@ Serilog is configured in both web applications:
 - `FlashInterview.Web`
 
 Both write structured logs to console and use Serilog request logging for HTTP requests. Container platforms can collect logs directly from stdout/stderr.
+
+When `OpenTelemetry__OtlpEndpoint` is configured, application logs are also exported to the Aspire Dashboard through the Microsoft OpenTelemetry logging provider. Request logs are enriched with validated `CorrelationId`, `SessionId`, and `TraceIdentifier` fields. The API and MVC apps accept optional `X-Correlation-Id` and `X-Session-Id` headers, echo the sanitized values in responses, and fall back to generated identifiers when submitted values are blank, longer than 64 characters, or contain characters other than letters, digits, `-`, and `_`.
 
 Request log events include the application identity, HTTP method, path, status code, and elapsed time. Development and container-development settings keep framework, EF Core SQL command, and outbound HttpClient logs at `Warning` to avoid drowning out useful request and application events.
 
@@ -413,6 +424,7 @@ The current xUnit suite covers:
 - CI starts a SQL Server service container so MSSQL-backed CRUD, migration, and seed tests run in pull-request checks instead of being silently skipped.
 - MVC project architecture guards that prevent direct EF Core, SQL Server, or infrastructure references in the frontend.
 - MVC API-client behavior, including sending the admin API key only for Admin requests.
+- Performance lab command parsing and API correlation/session header behavior.
 
 ## Current Codebase Status
 
