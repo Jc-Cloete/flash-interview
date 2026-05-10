@@ -19,7 +19,12 @@ public sealed record LoadTestOptions(
         var profile = ParseProfile(GetValue(args, "--profile") ?? "baseline");
         var clientIpPoolSize = ParseClientIpPoolSize(GetValue(args, "--client-ip-pool-size"), smoke, profile);
 
-        return new LoadTestOptions(new Uri(baseUrl), adminApiKey, smoke, profile, reportFolder, clientIpPoolSize);
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri))
+        {
+            throw new ArgumentException($"Invalid base URL: {baseUrl}", nameof(baseUrl));
+        }
+
+        return new LoadTestOptions(uri, adminApiKey, smoke, profile, reportFolder, clientIpPoolSize);
     }
 
     private static string? GetValue(string[] args, string name)
@@ -59,9 +64,9 @@ public sealed record LoadTestOptions(
     {
         if (configuredValue is not null)
         {
-            if (!int.TryParse(configuredValue, out var parsedValue) || parsedValue < 1)
+            if (!int.TryParse(configuredValue, out var parsedValue) || parsedValue is < 1 or > 64771)
             {
-                throw new ArgumentException("--client-ip-pool-size must be a positive integer.");
+                throw new ArgumentException("--client-ip-pool-size must be between 1 and 64771.");
             }
 
             return parsedValue;

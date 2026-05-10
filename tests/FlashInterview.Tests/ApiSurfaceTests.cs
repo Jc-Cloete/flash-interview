@@ -110,6 +110,32 @@ public sealed class ApiSurfaceTests
     }
 
     [Fact]
+    public async Task ApiResponses_RejectInvalidCorrelationAndSessionHeadersForLogDiscovery()
+    {
+        using var factory = new FlashInterviewApiFactory(new FakeSensitiveWordRepository());
+        using var client = factory.CreateHttpsClient();
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/messages/mask")
+        {
+            Content = JsonContent.Create(new MaskMessageRequest("DROP"))
+        };
+        request.Headers.Add("X-Correlation-Id", "invalid header value with spaces and punctuation!");
+        request.Headers.Add("X-Session-Id", new string('x', 65));
+
+        using var response = await client.SendAsync(request);
+
+        response.EnsureSuccessStatusCode();
+        var correlationId = response.Headers.GetValues("X-Correlation-Id").Single();
+        var sessionId = response.Headers.GetValues("X-Session-Id").Single();
+        Assert.NotEqual("invalid header value with spaces and punctuation!", correlationId);
+        Assert.NotEqual(new string('x', 65), sessionId);
+        Assert.All(correlationId, AssertLogDiscoveryIdentifierCharacter);
+        Assert.All(sessionId, AssertLogDiscoveryIdentifierCharacter);
+        Assert.True(correlationId.Length <= 64);
+        Assert.True(sessionId.Length <= 64);
+    }
+
+    [Fact]
     public async Task MaskEndpoint_ReusesCachedActiveCandidatesAcrossRepeatedCallsAndRefreshesAfterCreateInvalidation()
     {
         var repository = new FakeSensitiveWordRepository
@@ -799,5 +825,10 @@ public sealed class ApiSurfaceTests
         {
             allowRefreshToComplete.SetResult();
         }
+    }
+
+    private static void AssertLogDiscoveryIdentifierCharacter(char value)
+    {
+        Assert.True(char.IsAsciiLetterOrDigit(value) || value is '-' or '_');
     }
 }

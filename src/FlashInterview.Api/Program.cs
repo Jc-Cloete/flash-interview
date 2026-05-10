@@ -17,7 +17,6 @@ using OpenTelemetry.Trace;
 using Serilog;
 using Serilog.Context;
 using Serilog.Events;
-using Serilog.Sinks.OpenTelemetry;
 using System.Net;
 using System.Threading.RateLimiting;
 
@@ -32,27 +31,6 @@ builder.Host.UseSerilog((context, loggerConfiguration) =>
         .Enrich.FromLogContext()
         .Enrich.WithProperty("Application", "FlashInterview.Api")
         .WriteTo.Console();
-
-    if (!string.IsNullOrWhiteSpace(apiOtlpEndpoint))
-    {
-        loggerConfiguration.WriteTo.OpenTelemetry(options =>
-        {
-            options.Endpoint = apiOtlpEndpoint;
-            options.Protocol = OtlpProtocol.Grpc;
-            options.ResourceAttributes = new Dictionary<string, object>
-            {
-                ["service.name"] = apiServiceName,
-                ["service.namespace"] = "FlashInterview"
-            };
-            options.IncludedData =
-                IncludedData.MessageTemplateTextAttribute |
-                IncludedData.MessageTemplateRenderingsAttribute |
-                IncludedData.SourceContextAttribute |
-                IncludedData.TraceIdField |
-                IncludedData.SpanIdField |
-                IncludedData.TemplateBody;
-        });
-    }
 });
 
 builder.Logging.AddOpenTelemetry(logging =>
@@ -207,22 +185,7 @@ app.Use(async (httpContext, next) =>
     using var sessionProperty = LogContext.PushProperty("SessionId", sessionId);
     using var traceIdentifierProperty = LogContext.PushProperty("TraceIdentifier", httpContext.TraceIdentifier);
 
-    var startedAt = TimeProvider.System.GetTimestamp();
-
-    try
-    {
-        await next(httpContext);
-    }
-    finally
-    {
-        var elapsed = TimeProvider.System.GetElapsedTime(startedAt);
-        app.Logger.LogInformation(
-            "HTTP request completed {RequestMethod} {RequestPath} {StatusCode} in {ElapsedMilliseconds} ms",
-            httpContext.Request.Method,
-            httpContext.Request.Path.Value,
-            httpContext.Response.StatusCode,
-            elapsed.TotalMilliseconds);
-    }
+    await next(httpContext);
 });
 
 app.UseExceptionHandler(errorApp =>
@@ -290,7 +253,25 @@ app.Run();
 static string GetOrCreateRequestHeader(HttpContext httpContext, string headerName, string fallbackValue)
 {
     var value = httpContext.Request.Headers[headerName].FirstOrDefault();
-    return string.IsNullOrWhiteSpace(value) ? fallbackValue : value;
+    return IsValidLogDiscoveryIdentifier(value) ? value! : NormalizeLogDiscoveryIdentifier(fallbackValue);
+}
+
+static bool IsValidLogDiscoveryIdentifier(string? value)
+{
+    return !string.IsNullOrWhiteSpace(value)
+        && value.Length <= 64
+        && value.All(IsLogDiscoveryIdentifierCharacter);
+}
+
+static string NormalizeLogDiscoveryIdentifier(string value)
+{
+    var normalized = new string(value.Where(IsLogDiscoveryIdentifierCharacter).Take(64).ToArray());
+    return string.IsNullOrWhiteSpace(normalized) ? Guid.NewGuid().ToString("n") : normalized;
+}
+
+static bool IsLogDiscoveryIdentifierCharacter(char value)
+{
+    return char.IsAsciiLetterOrDigit(value) || value is '-' or '_';
 }
 
 public partial class Program;

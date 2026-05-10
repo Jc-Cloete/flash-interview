@@ -238,6 +238,8 @@ Open the dashboard:
 
 The observability Compose overlay binds dashboard ports to `127.0.0.1` and raises the mask rate limit for local performance-lab runs so capacity profiles measure API behavior rather than the default per-client throttle.
 
+Dependency note: API EF Core span capture currently uses `OpenTelemetry.Instrumentation.EntityFrameworkCore` version `1.15.1-beta.1`, which is prerelease. Keep this visible during dependency reviews and upgrade to the first suitable stable package release when it becomes available.
+
 Run masking microbenchmarks:
 
 ```bash

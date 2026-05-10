@@ -117,6 +117,11 @@ public static class FlashInterviewLoadScenarios
 
     private static void ValidateOptions(LoadTestOptions options)
     {
+        if (options.ClientIpPoolSize is < 1 or > 64771)
+        {
+            throw new ArgumentException("--client-ip-pool-size must be between 1 and 64771.");
+        }
+
         if (!options.Smoke && options.ClientIpPoolSize < 10)
         {
             throw new ArgumentException(

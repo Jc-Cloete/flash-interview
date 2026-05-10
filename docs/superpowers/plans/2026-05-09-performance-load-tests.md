@@ -772,7 +772,7 @@ git commit -m "test: add api load and capacity profiles"
 
 Add this section after the Local Development test commands:
 
-```markdown
+````markdown
 ## Performance Lab
 
 The performance lab is opt-in. It combines live observability with repeatable load reports:
@@ -822,7 +822,7 @@ dotnet run --project tests/FlashInterview.PerformanceTests -- load --base-url ht
 Use NBomber reports for high-level throughput, request latency, percentiles, success rate, and saturation points. Use the Aspire Dashboard during the same run to inspect API request metrics, trace waterfalls, MVC-to-API calls, EF Core database spans, runtime counters, and masking-specific histograms.
 
 Reports are written to `artifacts/performance/`. BenchmarkDotNet writes to `BenchmarkDotNet.Artifacts/`. Both folders are local artifacts and are not committed.
-```
+````
 
 - [x] **Step 2: Verify README command references**
 
