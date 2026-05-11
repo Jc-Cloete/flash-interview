@@ -1,11 +1,9 @@
+using FlashInterview.Api.Users;
 using FlashInterview.Api.Security;
 using FlashInterview.Application.Auth;
-using FlashInterview.Infrastructure;
-using FlashInterview.Infrastructure.Auth;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Swashbuckle.AspNetCore.Annotations;
 using System.ComponentModel.DataAnnotations;
 
@@ -14,10 +12,7 @@ namespace FlashInterview.Api.Controllers;
 [ApiController]
 [Route("api/users")]
 [Authorize(Policy = AuthorizationPolicies.AdminApiKey)]
-public sealed class UsersController(
-    UserManager<FlashInterviewUser> userManager,
-    RoleManager<IdentityRole> roleManager,
-    FlashInterviewDbContext dbContext) : ControllerBase
+public sealed class UsersController(IUserManagementWorkflow userManagementWorkflow) : ControllerBase
 {
     [HttpGet]
     [SwaggerOperation(Summary = "List users", Description = "Lists application users for internal user management.")]
@@ -25,33 +20,8 @@ public sealed class UsersController(
     [SwaggerResponse(StatusCodes.Status401Unauthorized, "Missing or invalid admin API key.")]
     public async Task<ActionResult<IReadOnlyList<UserListItemDto>>> List(CancellationToken cancellationToken)
     {
-        var users = await userManager.Users
-            .OrderBy(user => user.Email)
-            .ThenBy(user => user.Id)
-            .ToListAsync(cancellationToken);
-        var userIds = users.Select(user => user.Id).ToArray();
-        var roleRows = await dbContext.UserRoles
-            .Where(userRole => userIds.Contains(userRole.UserId))
-            .Join(
-                dbContext.Roles,
-                userRole => userRole.RoleId,
-                role => role.Id,
-                (userRole, role) => new { userRole.UserId, role.Name })
-            .ToListAsync(cancellationToken);
-        var rolesByUserId = roleRows
-            .Where(row => !string.IsNullOrWhiteSpace(row.Name))
-            .GroupBy(row => row.UserId)
-            .ToDictionary(
-                group => group.Key,
-                group => group.Select(row => row.Name!).Order(StringComparer.Ordinal).ToArray());
-
-        var userDtos = users
-            .Select(user => CreateUserListItem(
-                user,
-                rolesByUserId.GetValueOrDefault(user.Id) ?? []))
-            .ToArray();
-
-        return Ok(userDtos);
+        var result = await userManagementWorkflow.ListAsync(cancellationToken);
+        return Ok(result.Users);
     }
 
     [HttpPost]
@@ -67,40 +37,8 @@ public sealed class UsersController(
             return ValidationProblem(ModelState);
         }
 
-        var email = request.Email.Trim();
-        if (await userManager.FindByEmailAsync(email) is not null)
-        {
-            return Conflict();
-        }
-
-        var user = new FlashInterviewUser
-        {
-            UserName = email,
-            Email = email,
-            EmailConfirmed = true,
-            DisplayName = string.IsNullOrWhiteSpace(request.DisplayName) ? null : request.DisplayName.Trim(),
-            CreatedAt = DateTimeOffset.UtcNow,
-            UpdatedAt = DateTimeOffset.UtcNow
-        };
-
-        var createResult = await userManager.CreateAsync(user, request.Password);
-        if (!createResult.Succeeded)
-        {
-            return ValidationProblem(createResult);
-        }
-
-        if (request.IsAdmin)
-        {
-            await EnsureRoleExistsAsync(ApplicationRoles.Admin);
-            var roleResult = await userManager.AddToRoleAsync(user, ApplicationRoles.Admin);
-            if (!roleResult.Succeeded)
-            {
-                return ValidationProblem(roleResult);
-            }
-        }
-
-        var createdUser = await CreateUserListItemAsync(user);
-        return Created($"/api/users/{Uri.EscapeDataString(user.Id)}", createdUser);
+        var result = await userManagementWorkflow.CreateAsync(request);
+        return MapCreateWorkflowResult(result);
     }
 
     [HttpPut("{id}/roles/admin")]
@@ -113,82 +51,8 @@ public sealed class UsersController(
         string id,
         [FromBody] UserRoleUpdateRequest request)
     {
-        var user = await userManager.FindByIdAsync(id);
-        if (user is null)
-        {
-            return NotFound();
-        }
-
-        await EnsureRoleExistsAsync(ApplicationRoles.Admin);
-        var isAdmin = await userManager.IsInRoleAsync(user, ApplicationRoles.Admin);
-        if (request.IsAdmin && !isAdmin)
-        {
-            var addResult = await userManager.AddToRoleAsync(user, ApplicationRoles.Admin);
-            if (!addResult.Succeeded)
-            {
-                return ValidationProblem(addResult);
-            }
-
-            var stampResult = await UpdateSecurityStampAsync(user);
-            if (!stampResult.Succeeded)
-            {
-                return ValidationProblem(stampResult);
-            }
-        }
-        else if (!request.IsAdmin && isAdmin)
-        {
-            var removeResult = await userManager.RemoveFromRoleAsync(user, ApplicationRoles.Admin);
-            if (!removeResult.Succeeded)
-            {
-                return ValidationProblem(removeResult);
-            }
-
-            var stampResult = await UpdateSecurityStampAsync(user);
-            if (!stampResult.Succeeded)
-            {
-                return ValidationProblem(stampResult);
-            }
-        }
-
-        return Ok(await CreateUserListItemAsync(user));
-    }
-
-    private async Task<UserListItemDto> CreateUserListItemAsync(FlashInterviewUser user)
-    {
-        var roles = await userManager.GetRolesAsync(user);
-
-        return CreateUserListItem(user, roles.Order(StringComparer.Ordinal).ToArray());
-    }
-
-    private static UserListItemDto CreateUserListItem(FlashInterviewUser user, IReadOnlyList<string> roles)
-    {
-        var isLockedOut = user.LockoutEnd.HasValue && user.LockoutEnd.Value > DateTimeOffset.UtcNow;
-
-        return new UserListItemDto(
-            user.Id,
-            user.Email ?? user.UserName ?? "",
-            user.DisplayName,
-            isLockedOut,
-            roles);
-    }
-
-    private async Task EnsureRoleExistsAsync(string role)
-    {
-        if (!await roleManager.RoleExistsAsync(role))
-        {
-            var result = await roleManager.CreateAsync(new IdentityRole(role));
-            if (!result.Succeeded)
-            {
-                throw new InvalidOperationException(
-                    $"Could not create role '{role}': {string.Join("; ", result.Errors.Select(error => error.Description))}");
-            }
-        }
-    }
-
-    private async Task<IdentityResult> UpdateSecurityStampAsync(FlashInterviewUser user)
-    {
-        user.UpdatedAt = DateTimeOffset.UtcNow;
-        return await userManager.UpdateSecurityStampAsync(user);
+        var result = await userManagementWorkflow.UpdateAdminRoleAsync(id, request);
+        return MapUserWorkflowResult(result);
     }
 
     private bool TryValidateRequest<TRequest>(TRequest request)
@@ -216,13 +80,39 @@ public sealed class UsersController(
         return false;
     }
 
-    private ActionResult ValidationProblem(IdentityResult identityResult)
+    private ActionResult<UserListItemDto> MapCreateWorkflowResult(UserManagementWorkflowUserResult result)
     {
-        foreach (var error in identityResult.Errors)
+        return result.Status switch
         {
-            ModelState.AddModelError(string.Empty, error.Description);
+            UserManagementWorkflowStatus.Succeeded => Created(
+                $"/api/users/{Uri.EscapeDataString((result.User ?? throw new InvalidOperationException("Successful user workflow result did not include a user.")).Id)}",
+                result.User),
+            UserManagementWorkflowStatus.Conflict => Conflict(),
+            UserManagementWorkflowStatus.ValidationFailed => ValidationProblem(AddValidationErrors(result.ValidationErrors)),
+            UserManagementWorkflowStatus.NotFound => NotFound(),
+            _ => throw new InvalidOperationException($"Unsupported user management workflow status '{result.Status}'.")
+        };
+    }
+
+    private ActionResult<UserListItemDto> MapUserWorkflowResult(UserManagementWorkflowUserResult result)
+    {
+        return result.Status switch
+        {
+            UserManagementWorkflowStatus.Succeeded => Ok(result.User ?? throw new InvalidOperationException("Successful user workflow result did not include a user.")),
+            UserManagementWorkflowStatus.NotFound => NotFound(),
+            UserManagementWorkflowStatus.Conflict => Conflict(),
+            UserManagementWorkflowStatus.ValidationFailed => ValidationProblem(AddValidationErrors(result.ValidationErrors)),
+            _ => throw new InvalidOperationException($"Unsupported user management workflow status '{result.Status}'.")
+        };
+    }
+
+    private ModelStateDictionary AddValidationErrors(IReadOnlyList<UserManagementWorkflowValidationError>? validationErrors)
+    {
+        foreach (var validationError in validationErrors ?? [])
+        {
+            ModelState.AddModelError(validationError.Key, validationError.Message);
         }
 
-        return ValidationProblem(ModelState);
+        return ModelState;
     }
 }

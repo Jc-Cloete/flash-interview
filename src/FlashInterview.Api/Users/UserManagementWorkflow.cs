@@ -1,0 +1,173 @@
+using FlashInterview.Application.Auth;
+using FlashInterview.Infrastructure;
+using FlashInterview.Infrastructure.Auth;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+
+namespace FlashInterview.Api.Users;
+
+public sealed class UserManagementWorkflow(
+    UserManager<FlashInterviewUser> userManager,
+    RoleManager<IdentityRole> roleManager,
+    FlashInterviewDbContext dbContext) : IUserManagementWorkflow
+{
+    public async Task<UserManagementWorkflowListResult> ListAsync(CancellationToken cancellationToken)
+    {
+        var users = await userManager.Users
+            .OrderBy(user => user.Email)
+            .ThenBy(user => user.Id)
+            .ToListAsync(cancellationToken);
+        var userIds = users.Select(user => user.Id).ToArray();
+        var roleRows = await dbContext.UserRoles
+            .Where(userRole => userIds.Contains(userRole.UserId))
+            .Join(
+                dbContext.Roles,
+                userRole => userRole.RoleId,
+                role => role.Id,
+                (userRole, role) => new { userRole.UserId, role.Name })
+            .ToListAsync(cancellationToken);
+        var rolesByUserId = roleRows
+            .Where(row => !string.IsNullOrWhiteSpace(row.Name))
+            .GroupBy(row => row.UserId)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Select(row => row.Name!).Order(StringComparer.Ordinal).ToArray());
+
+        var userDtos = users
+            .Select(user => CreateUserListItem(
+                user,
+                rolesByUserId.GetValueOrDefault(user.Id) ?? []))
+            .ToArray();
+
+        return new UserManagementWorkflowListResult(userDtos);
+    }
+
+    public async Task<UserManagementWorkflowUserResult> CreateAsync(CreateUserRequest request)
+    {
+        var email = request.Email.Trim();
+        if (await userManager.FindByEmailAsync(email) is not null)
+        {
+            return UserManagementWorkflowUserResult.Conflict();
+        }
+
+        var user = new FlashInterviewUser
+        {
+            UserName = email,
+            Email = email,
+            EmailConfirmed = true,
+            DisplayName = string.IsNullOrWhiteSpace(request.DisplayName) ? null : request.DisplayName.Trim(),
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+
+        var createResult = await userManager.CreateAsync(user, request.Password);
+        if (!createResult.Succeeded)
+        {
+            return UserManagementWorkflowUserResult.ValidationFailed(createResult.ToValidationErrors());
+        }
+
+        if (request.IsAdmin)
+        {
+            await EnsureRoleExistsAsync(ApplicationRoles.Admin);
+            var roleResult = await userManager.AddToRoleAsync(user, ApplicationRoles.Admin);
+            if (!roleResult.Succeeded)
+            {
+                return UserManagementWorkflowUserResult.ValidationFailed(roleResult.ToValidationErrors());
+            }
+        }
+
+        return UserManagementWorkflowUserResult.Succeeded(await CreateUserListItemAsync(user));
+    }
+
+    public async Task<UserManagementWorkflowUserResult> UpdateAdminRoleAsync(
+        string id,
+        UserRoleUpdateRequest request)
+    {
+        var user = await userManager.FindByIdAsync(id);
+        if (user is null)
+        {
+            return UserManagementWorkflowUserResult.NotFound();
+        }
+
+        await EnsureRoleExistsAsync(ApplicationRoles.Admin);
+        var isAdmin = await userManager.IsInRoleAsync(user, ApplicationRoles.Admin);
+        if (request.IsAdmin && !isAdmin)
+        {
+            var addResult = await userManager.AddToRoleAsync(user, ApplicationRoles.Admin);
+            if (!addResult.Succeeded)
+            {
+                return UserManagementWorkflowUserResult.ValidationFailed(addResult.ToValidationErrors());
+            }
+
+            var stampResult = await UpdateSecurityStampAsync(user);
+            if (!stampResult.Succeeded)
+            {
+                return UserManagementWorkflowUserResult.ValidationFailed(stampResult.ToValidationErrors());
+            }
+        }
+        else if (!request.IsAdmin && isAdmin)
+        {
+            var removeResult = await userManager.RemoveFromRoleAsync(user, ApplicationRoles.Admin);
+            if (!removeResult.Succeeded)
+            {
+                return UserManagementWorkflowUserResult.ValidationFailed(removeResult.ToValidationErrors());
+            }
+
+            var stampResult = await UpdateSecurityStampAsync(user);
+            if (!stampResult.Succeeded)
+            {
+                return UserManagementWorkflowUserResult.ValidationFailed(stampResult.ToValidationErrors());
+            }
+        }
+
+        return UserManagementWorkflowUserResult.Succeeded(await CreateUserListItemAsync(user));
+    }
+
+    private async Task<UserListItemDto> CreateUserListItemAsync(FlashInterviewUser user)
+    {
+        var roles = await userManager.GetRolesAsync(user);
+
+        return CreateUserListItem(user, roles.Order(StringComparer.Ordinal).ToArray());
+    }
+
+    private static UserListItemDto CreateUserListItem(FlashInterviewUser user, IReadOnlyList<string> roles)
+    {
+        var isLockedOut = user.LockoutEnd.HasValue && user.LockoutEnd.Value > DateTimeOffset.UtcNow;
+
+        return new UserListItemDto(
+            user.Id,
+            user.Email ?? user.UserName ?? "",
+            user.DisplayName,
+            isLockedOut,
+            roles);
+    }
+
+    private async Task EnsureRoleExistsAsync(string role)
+    {
+        if (!await roleManager.RoleExistsAsync(role))
+        {
+            var result = await roleManager.CreateAsync(new IdentityRole(role));
+            if (!result.Succeeded)
+            {
+                throw new InvalidOperationException(
+                    $"Could not create role '{role}': {string.Join("; ", result.Errors.Select(error => error.Description))}");
+            }
+        }
+    }
+
+    private async Task<IdentityResult> UpdateSecurityStampAsync(FlashInterviewUser user)
+    {
+        user.UpdatedAt = DateTimeOffset.UtcNow;
+        return await userManager.UpdateSecurityStampAsync(user);
+    }
+}
+
+file static class IdentityResultUserManagementExtensions
+{
+    public static IReadOnlyList<UserManagementWorkflowValidationError> ToValidationErrors(this IdentityResult result)
+    {
+        return result.Errors
+            .Select(error => new UserManagementWorkflowValidationError(string.Empty, error.Description))
+            .ToArray();
+    }
+}
