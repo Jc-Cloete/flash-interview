@@ -24,6 +24,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\FlashInterview.Hosting\*.cs" Link="Hosting\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\FlashInterview.Application\FlashInterview.Application.csproj" />
     <ProjectReference Include="..\FlashInterview.Infrastructure\FlashInterview.Infrastructure.csproj" />
   </ItemGroup>
