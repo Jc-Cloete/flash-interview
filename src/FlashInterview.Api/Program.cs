@@ -1,6 +1,4 @@
-using FlashInterview.Api.Auth;
 using FlashInterview.Api.Health;
-using FlashInterview.Api.Users;
 using FlashInterview.Hosting;
 using FlashInterview.Api.Security;
 using FlashInterview.Api.SensitiveWords;
@@ -46,8 +44,6 @@ builder.AddFlashInterviewOpenTelemetry(
     });
 
 builder.Services.AddFlashInterviewInfrastructure(builder.Configuration);
-builder.Services.AddScoped<IAuthWorkflow, AuthWorkflow>();
-builder.Services.AddScoped<IUserManagementWorkflow, UserManagementWorkflow>();
 builder.Services.AddScoped<ISensitiveWordAdministrationService, SensitiveWordAdministrationService>();
 builder.Services.AddSingleton<ISensitiveWordMatcherCache, SensitiveWordMatcherCache>();
 builder.Services.AddSingleton<MaskingMetrics>();

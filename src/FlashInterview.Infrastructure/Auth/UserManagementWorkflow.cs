@@ -1,10 +1,8 @@
 using FlashInterview.Application.Auth;
-using FlashInterview.Infrastructure;
-using FlashInterview.Infrastructure.Auth;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
-namespace FlashInterview.Api.Users;
+namespace FlashInterview.Infrastructure.Auth;
 
 public sealed class UserManagementWorkflow(
     UserManager<FlashInterviewUser> userManager,
@@ -63,7 +61,7 @@ public sealed class UserManagementWorkflow(
         var createResult = await userManager.CreateAsync(user, request.Password);
         if (!createResult.Succeeded)
         {
-            return UserManagementWorkflowUserResult.ValidationFailed(createResult.ToValidationErrors());
+            return UserManagementWorkflowUserResult.ValidationFailed(createResult.ToUserManagementWorkflowValidationErrors());
         }
 
         if (request.IsAdmin)
@@ -72,7 +70,7 @@ public sealed class UserManagementWorkflow(
             var roleResult = await userManager.AddToRoleAsync(user, ApplicationRoles.Admin);
             if (!roleResult.Succeeded)
             {
-                return UserManagementWorkflowUserResult.ValidationFailed(roleResult.ToValidationErrors());
+                return UserManagementWorkflowUserResult.ValidationFailed(roleResult.ToUserManagementWorkflowValidationErrors());
             }
         }
 
@@ -96,13 +94,13 @@ public sealed class UserManagementWorkflow(
             var addResult = await userManager.AddToRoleAsync(user, ApplicationRoles.Admin);
             if (!addResult.Succeeded)
             {
-                return UserManagementWorkflowUserResult.ValidationFailed(addResult.ToValidationErrors());
+                return UserManagementWorkflowUserResult.ValidationFailed(addResult.ToUserManagementWorkflowValidationErrors());
             }
 
             var stampResult = await UpdateSecurityStampAsync(user);
             if (!stampResult.Succeeded)
             {
-                return UserManagementWorkflowUserResult.ValidationFailed(stampResult.ToValidationErrors());
+                return UserManagementWorkflowUserResult.ValidationFailed(stampResult.ToUserManagementWorkflowValidationErrors());
             }
         }
         else if (!request.IsAdmin && isAdmin)
@@ -110,13 +108,13 @@ public sealed class UserManagementWorkflow(
             var removeResult = await userManager.RemoveFromRoleAsync(user, ApplicationRoles.Admin);
             if (!removeResult.Succeeded)
             {
-                return UserManagementWorkflowUserResult.ValidationFailed(removeResult.ToValidationErrors());
+                return UserManagementWorkflowUserResult.ValidationFailed(removeResult.ToUserManagementWorkflowValidationErrors());
             }
 
             var stampResult = await UpdateSecurityStampAsync(user);
             if (!stampResult.Succeeded)
             {
-                return UserManagementWorkflowUserResult.ValidationFailed(stampResult.ToValidationErrors());
+                return UserManagementWorkflowUserResult.ValidationFailed(stampResult.ToUserManagementWorkflowValidationErrors());
             }
         }
 
@@ -159,15 +157,5 @@ public sealed class UserManagementWorkflow(
     {
         user.UpdatedAt = DateTimeOffset.UtcNow;
         return await userManager.UpdateSecurityStampAsync(user);
-    }
-}
-
-file static class IdentityResultUserManagementExtensions
-{
-    public static IReadOnlyList<UserManagementWorkflowValidationError> ToValidationErrors(this IdentityResult result)
-    {
-        return result.Errors
-            .Select(error => new UserManagementWorkflowValidationError(string.Empty, error.Description))
-            .ToArray();
     }
 }

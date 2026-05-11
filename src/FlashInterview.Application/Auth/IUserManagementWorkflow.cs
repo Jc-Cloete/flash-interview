@@ -1,6 +1,4 @@
-using FlashInterview.Application.Auth;
-
-namespace FlashInterview.Api.Users;
+namespace FlashInterview.Application.Auth;
 
 public interface IUserManagementWorkflow
 {

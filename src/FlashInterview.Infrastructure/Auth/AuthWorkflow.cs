@@ -1,8 +1,7 @@
 using FlashInterview.Application.Auth;
-using FlashInterview.Infrastructure.Auth;
 using Microsoft.AspNetCore.Identity;
 
-namespace FlashInterview.Api.Auth;
+namespace FlashInterview.Infrastructure.Auth;
 
 public sealed class AuthWorkflow(
     UserManager<FlashInterviewUser> userManager,
@@ -79,7 +78,7 @@ public sealed class AuthWorkflow(
             var createResult = await userManager.CreateAsync(user);
             if (!createResult.Succeeded)
             {
-                return AuthWorkflowResult.ValidationFailed(createResult.ToValidationErrors());
+                return AuthWorkflowResult.ValidationFailed(createResult.ToAuthWorkflowValidationErrors());
             }
         }
         else if (!user.EmailConfirmed)
@@ -89,7 +88,7 @@ public sealed class AuthWorkflow(
             var updateResult = await userManager.UpdateAsync(user);
             if (!updateResult.Succeeded)
             {
-                return AuthWorkflowResult.ValidationFailed(updateResult.ToValidationErrors());
+                return AuthWorkflowResult.ValidationFailed(updateResult.ToAuthWorkflowValidationErrors());
             }
         }
 
@@ -98,7 +97,7 @@ public sealed class AuthWorkflow(
             new UserLoginInfo(provider, providerKey, provider));
         if (!linkResult.Succeeded)
         {
-            return AuthWorkflowResult.ValidationFailed(linkResult.ToValidationErrors());
+            return AuthWorkflowResult.ValidationFailed(linkResult.ToAuthWorkflowValidationErrors());
         }
 
         if (string.IsNullOrWhiteSpace(user.DisplayName) && !string.IsNullOrWhiteSpace(request.DisplayName))
@@ -108,7 +107,7 @@ public sealed class AuthWorkflow(
             var updateResult = await userManager.UpdateAsync(user);
             if (!updateResult.Succeeded)
             {
-                return AuthWorkflowResult.ValidationFailed(updateResult.ToValidationErrors());
+                return AuthWorkflowResult.ValidationFailed(updateResult.ToAuthWorkflowValidationErrors());
             }
         }
 

@@ -1,4 +1,3 @@
-using FlashInterview.Api.Auth;
 using FlashInterview.Api.Security;
 using FlashInterview.Application.Auth;
 using Microsoft.AspNetCore.Authorization;

@@ -5,6 +5,32 @@ namespace FlashInterview.Tests;
 public sealed class WebProjectArchitectureTests
 {
     [Fact]
+    public void ApiComposition_DoesNotOwnIdentityWorkflowImplementations()
+    {
+        var apiSourceRoot = Path.Combine(TestPaths.RepositoryRoot, "src", "FlashInterview.Api");
+        var sourceFiles = Directory
+            .EnumerateFiles(apiSourceRoot, "*.cs", SearchOption.AllDirectories)
+            .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
+                && !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            .ToArray();
+
+        var forbiddenUsages = sourceFiles
+            .SelectMany(path => File.ReadLines(path).Select((line, index) => new { path, line, lineNumber = index + 1 }))
+            .Where(entry =>
+                entry.line.Contains("namespace FlashInterview.Api.Auth", StringComparison.Ordinal)
+                || entry.line.Contains("namespace FlashInterview.Api.Users", StringComparison.Ordinal)
+                || entry.line.Contains("using FlashInterview.Api.Auth", StringComparison.Ordinal)
+                || entry.line.Contains("using FlashInterview.Api.Users", StringComparison.Ordinal)
+                || entry.line.Contains("using FlashInterview.Infrastructure.Auth", StringComparison.Ordinal)
+                || entry.line.Contains("AddScoped<IAuthWorkflow, AuthWorkflow>", StringComparison.Ordinal)
+                || entry.line.Contains("AddScoped<IUserManagementWorkflow, UserManagementWorkflow>", StringComparison.Ordinal))
+            .Select(entry => $"{Path.GetRelativePath(TestPaths.RepositoryRoot, entry.path)}:{entry.lineNumber}: {entry.line.Trim()}")
+            .ToArray();
+
+        Assert.Empty(forbiddenUsages);
+    }
+
+    [Fact]
     public void WebProject_ReferencesOnlyApplicationContractsFromSolutionProjects()
     {
         var projectPath = Path.Combine(TestPaths.RepositoryRoot, "src", "FlashInterview.Web", "FlashInterview.Web.csproj");

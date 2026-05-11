@@ -1,6 +1,4 @@
-using FlashInterview.Application.Auth;
-
-namespace FlashInterview.Api.Auth;
+namespace FlashInterview.Application.Auth;
 
 public interface IAuthWorkflow
 {
