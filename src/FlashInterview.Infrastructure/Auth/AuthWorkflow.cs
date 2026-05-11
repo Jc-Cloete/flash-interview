@@ -25,7 +25,6 @@ public sealed class AuthWorkflow(
             user,
             request.Password,
             lockoutOnFailure: true);
-        cancellationToken.ThrowIfCancellationRequested();
 
         if (!signInResult.Succeeded)
         {
@@ -72,6 +71,8 @@ public sealed class AuthWorkflow(
         var email = request.Email.Trim();
         user = await userManager.FindByEmailAsync(email);
         cancellationToken.ThrowIfCancellationRequested();
+        var createdUser = false;
+        var confirmedExistingEmail = false;
         if (user is null)
         {
             user = new FlashInterviewUser
@@ -85,30 +86,43 @@ public sealed class AuthWorkflow(
             };
 
             var createResult = await userManager.CreateAsync(user);
-            cancellationToken.ThrowIfCancellationRequested();
             if (!createResult.Succeeded)
             {
                 return AuthWorkflowResult.ValidationFailed(createResult.ToAuthWorkflowValidationErrors());
             }
+
+            createdUser = true;
         }
         else if (!user.EmailConfirmed)
         {
             user.EmailConfirmed = true;
             user.UpdatedAt = DateTimeOffset.UtcNow;
             var updateResult = await userManager.UpdateAsync(user);
-            cancellationToken.ThrowIfCancellationRequested();
             if (!updateResult.Succeeded)
             {
                 return AuthWorkflowResult.ValidationFailed(updateResult.ToAuthWorkflowValidationErrors());
             }
+
+            confirmedExistingEmail = true;
         }
 
         var linkResult = await userManager.AddLoginAsync(
             user,
             new UserLoginInfo(provider, providerKey, provider));
-        cancellationToken.ThrowIfCancellationRequested();
         if (!linkResult.Succeeded)
         {
+            if (createdUser)
+            {
+                return AuthWorkflowResult.ValidationFailed(
+                    await TryDeleteCreatedUserAfterFailureAsync(user, linkResult));
+            }
+
+            if (confirmedExistingEmail)
+            {
+                return AuthWorkflowResult.ValidationFailed(
+                    await TryRevertEmailConfirmationAfterFailureAsync(user, linkResult));
+            }
+
             return AuthWorkflowResult.ValidationFailed(linkResult.ToAuthWorkflowValidationErrors());
         }
 
@@ -117,7 +131,6 @@ public sealed class AuthWorkflow(
             user.DisplayName = request.DisplayName.Trim();
             user.UpdatedAt = DateTimeOffset.UtcNow;
             var updateResult = await userManager.UpdateAsync(user);
-            cancellationToken.ThrowIfCancellationRequested();
             if (!updateResult.Succeeded)
             {
                 return AuthWorkflowResult.ValidationFailed(updateResult.ToAuthWorkflowValidationErrors());
@@ -132,14 +145,42 @@ public sealed class AuthWorkflow(
         return string.Equals(provider, GoogleProvider, StringComparison.OrdinalIgnoreCase);
     }
 
+    private async Task<IReadOnlyList<AuthWorkflowValidationError>> TryDeleteCreatedUserAfterFailureAsync(
+        FlashInterviewUser user,
+        IdentityResult originalFailure)
+    {
+        var validationErrors = originalFailure.ToAuthWorkflowValidationErrors().ToList();
+        var deleteResult = await userManager.DeleteAsync(user);
+        if (!deleteResult.Succeeded)
+        {
+            validationErrors.AddRange(deleteResult.ToAuthWorkflowValidationErrors());
+        }
+
+        return validationErrors;
+    }
+
+    private async Task<IReadOnlyList<AuthWorkflowValidationError>> TryRevertEmailConfirmationAfterFailureAsync(
+        FlashInterviewUser user,
+        IdentityResult originalFailure)
+    {
+        var validationErrors = originalFailure.ToAuthWorkflowValidationErrors().ToList();
+        user.EmailConfirmed = false;
+        user.UpdatedAt = DateTimeOffset.UtcNow;
+        var updateResult = await userManager.UpdateAsync(user);
+        if (!updateResult.Succeeded)
+        {
+            validationErrors.AddRange(updateResult.ToAuthWorkflowValidationErrors());
+        }
+
+        return validationErrors;
+    }
+
     private async Task<AuthenticatedUserDto> CreateAuthenticatedUserAsync(
         FlashInterviewUser user,
         CancellationToken cancellationToken,
         string? fallbackEmail = null)
     {
-        cancellationToken.ThrowIfCancellationRequested();
         var roles = await userManager.GetRolesAsync(user);
-        cancellationToken.ThrowIfCancellationRequested();
         return new AuthenticatedUserDto(
             user.Id,
             user.Email ?? fallbackEmail ?? user.UserName ?? "",

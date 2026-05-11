@@ -180,16 +180,23 @@ public sealed class AuthApiTests
         await using var factory = new AuthApiFactory(AdminApiKey);
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
+        var request = new ExternalLoginRequest(
+            "google",
+            "google-user-1",
+            "new-user@example.test",
+            EmailVerified: true,
+            "New User");
+
         using var response = await PostExternalSignInAsync(
             client,
-            new ExternalLoginRequest(
-                "google",
-                "google-user-1",
-                "new-user@example.test",
-                EmailVerified: true,
-                "New User"));
+            request);
+
+        using var secondResponse = await PostExternalSignInAsync(
+            client,
+            request);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, secondResponse.StatusCode);
         Assert.True(await factory.UserHasExternalLoginAsync("new-user@example.test", "Google", "google-user-1"));
     }
 

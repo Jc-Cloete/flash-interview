@@ -4,7 +4,7 @@
 
 **Goal:** Reduce the architecture smells found in review while preserving the ASP.NET Core, MSSQL, Serilog, Swagger, and MVC-over-HTTP architecture.
 
-**Architecture:** Keep `FlashInterview.Web` API-only and database-free. Expose auth/user workflows through Application contracts, keep Identity/EF details in Infrastructure, centralize sensitive-word cache invalidation behind an API service, and share hosting setup through a real `FlashInterview.Hosting` project.
+**Architecture:** Keep `FlashInterview.Web` as the MVC/UI composition root, delegating auth and user-management work through Application contracts while keeping Identity/EF details in Infrastructure. The Web project remains database-free, sensitive-word cache invalidation is centralized behind an API service, and shared hosting setup lives in the real `FlashInterview.Hosting` project.
 
 **Tech Stack:** C#/.NET 10, ASP.NET Core MVC/Web API, ASP.NET Core Identity, EF Core SQL Server, xUnit, Serilog, OpenTelemetry, Swagger/Swashbuckle.
 

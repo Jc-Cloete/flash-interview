@@ -70,7 +70,8 @@ public sealed class UserManagementWorkflow(
             var roleResult = await userManager.AddToRoleAsync(user, ApplicationRoles.Admin);
             if (!roleResult.Succeeded)
             {
-                return UserManagementWorkflowUserResult.ValidationFailed(roleResult.ToUserManagementWorkflowValidationErrors());
+                return UserManagementWorkflowUserResult.ValidationFailed(
+                    await TryDeleteCreatedUserAfterFailureAsync(user, roleResult));
             }
         }
 
@@ -100,7 +101,8 @@ public sealed class UserManagementWorkflow(
             var stampResult = await UpdateSecurityStampAsync(user);
             if (!stampResult.Succeeded)
             {
-                return UserManagementWorkflowUserResult.ValidationFailed(stampResult.ToUserManagementWorkflowValidationErrors());
+                var undoResult = await userManager.RemoveFromRoleAsync(user, ApplicationRoles.Admin);
+                return UserManagementWorkflowUserResult.ValidationFailed(ToValidationErrors(stampResult, undoResult));
             }
         }
         else if (!request.IsAdmin && isAdmin)
@@ -114,7 +116,8 @@ public sealed class UserManagementWorkflow(
             var stampResult = await UpdateSecurityStampAsync(user);
             if (!stampResult.Succeeded)
             {
-                return UserManagementWorkflowUserResult.ValidationFailed(stampResult.ToUserManagementWorkflowValidationErrors());
+                var undoResult = await userManager.AddToRoleAsync(user, ApplicationRoles.Admin);
+                return UserManagementWorkflowUserResult.ValidationFailed(ToValidationErrors(stampResult, undoResult));
             }
         }
 
@@ -182,6 +185,29 @@ public sealed class UserManagementWorkflow(
             error.Code.Contains("Duplicate", StringComparison.OrdinalIgnoreCase)
             || error.Description.Contains("already exists", StringComparison.OrdinalIgnoreCase)
             || error.Description.Contains("duplicate", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static IReadOnlyList<UserManagementWorkflowValidationError> ToValidationErrors(
+        params IdentityResult[] results)
+    {
+        return results
+            .Where(result => !result.Succeeded)
+            .SelectMany(result => result.ToUserManagementWorkflowValidationErrors())
+            .ToArray();
+    }
+
+    private async Task<IReadOnlyList<UserManagementWorkflowValidationError>> TryDeleteCreatedUserAfterFailureAsync(
+        FlashInterviewUser user,
+        IdentityResult originalFailure)
+    {
+        var validationErrors = originalFailure.ToUserManagementWorkflowValidationErrors().ToList();
+        var deleteResult = await userManager.DeleteAsync(user);
+        if (!deleteResult.Succeeded)
+        {
+            validationErrors.AddRange(deleteResult.ToUserManagementWorkflowValidationErrors());
+        }
+
+        return validationErrors;
     }
 
     private async Task<IdentityResult> UpdateSecurityStampAsync(FlashInterviewUser user)
