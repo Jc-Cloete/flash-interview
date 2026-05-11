@@ -3,6 +3,7 @@ WORKDIR /src
 
 COPY FlashInterview.slnx ./
 COPY src/FlashInterview.Application/FlashInterview.Application.csproj src/FlashInterview.Application/
+COPY src/FlashInterview.Hosting/FlashInterview.Hosting.csproj src/FlashInterview.Hosting/
 COPY src/FlashInterview.Infrastructure/FlashInterview.Infrastructure.csproj src/FlashInterview.Infrastructure/
 COPY src/FlashInterview.Api/FlashInterview.Api.csproj src/FlashInterview.Api/
 RUN dotnet restore src/FlashInterview.Api/FlashInterview.Api.csproj

@@ -25,6 +25,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\FlashInterview.Application\FlashInterview.Application.csproj" />
+    <ProjectReference Include="..\FlashInterview.Hosting\FlashInterview.Hosting.csproj" />
     <ProjectReference Include="..\FlashInterview.Infrastructure\FlashInterview.Infrastructure.csproj" />
   </ItemGroup>
 

@@ -10,9 +10,7 @@ namespace FlashInterview.Api.Controllers;
 [ApiController]
 [Route("api/sensitive-words")]
 [Authorize(Policy = AuthorizationPolicies.AdminApiKey)]
-public sealed class SensitiveWordsController(
-    ISensitiveWordRepository repository,
-    ISensitiveWordMatcherCache matcherCache) : ControllerBase
+public sealed class SensitiveWordsController(ISensitiveWordAdministrationService administrationService) : ControllerBase
 {
     [HttpPost]
     [SwaggerOperation(Summary = "Create a sensitive word", Description = "Creates a new sensitive word for internal administration.")]
@@ -25,8 +23,7 @@ public sealed class SensitiveWordsController(
     {
         try
         {
-            var created = await repository.CreateAsync(request, cancellationToken);
-            matcherCache.Invalidate();
+            var created = await administrationService.CreateAsync(request, cancellationToken);
             return CreatedAtAction(nameof(Get), new { id = created.Id }, created);
         }
         catch (DuplicateSensitiveWordException)
@@ -48,7 +45,9 @@ public sealed class SensitiveWordsController(
         [FromQuery] int pageSize = 50,
         CancellationToken cancellationToken = default)
     {
-        var result = await repository.ListAsync(new SensitiveWordQuery(q, category, isActive, page, pageSize), cancellationToken);
+        var result = await administrationService.ListAsync(
+            new SensitiveWordQuery(q, category, isActive, page, pageSize),
+            cancellationToken);
         return Ok(result);
     }
 
@@ -59,7 +58,7 @@ public sealed class SensitiveWordsController(
     [SwaggerResponse(StatusCodes.Status404NotFound, "No sensitive word exists for the supplied identifier.")]
     public async Task<ActionResult<SensitiveWordDto>> Get(Guid id, CancellationToken cancellationToken)
     {
-        var result = await repository.GetAsync(id, cancellationToken);
+        var result = await administrationService.GetAsync(id, cancellationToken);
         return result is null ? NotFound() : Ok(result);
     }
 
@@ -76,12 +75,7 @@ public sealed class SensitiveWordsController(
     {
         try
         {
-            var result = await repository.UpdateAsync(id, request, cancellationToken);
-            if (result is not null)
-            {
-                matcherCache.Invalidate();
-            }
-
+            var result = await administrationService.UpdateAsync(id, request, cancellationToken);
             return result is null ? NotFound() : Ok(result);
         }
         catch (DuplicateSensitiveWordException)
@@ -98,12 +92,7 @@ public sealed class SensitiveWordsController(
     [SwaggerResponse(StatusCodes.Status404NotFound, "No sensitive word exists for the supplied identifier.")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {
-        var deleted = await repository.DeleteAsync(id, cancellationToken);
-        if (deleted)
-        {
-            matcherCache.Invalidate();
-        }
-
+        var deleted = await administrationService.DeleteAsync(id, cancellationToken);
         return deleted ? NoContent() : NotFound();
     }
 }

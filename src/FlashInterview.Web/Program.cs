@@ -1,4 +1,5 @@
 using FlashInterview.Application.Auth;
+using FlashInterview.Hosting;
 using FlashInterview.Web.Auth;
 using FlashInterview.Web.Clients;
 using Microsoft.AspNetCore.Authentication;
@@ -6,59 +7,18 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Diagnostics;
-using OpenTelemetry.Logs;
-using OpenTelemetry.Metrics;
-using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
-using Serilog;
-using Serilog.Context;
-using Serilog.Events;
 
 var builder = WebApplication.CreateBuilder(args);
 var webServiceName = builder.Configuration.GetValue("OpenTelemetry:ServiceName", "FlashInterview.Web");
 var webOtlpEndpoint = builder.Configuration["OpenTelemetry:OtlpEndpoint"];
 
-builder.Host.UseSerilog((context, loggerConfiguration) =>
-{
-    loggerConfiguration
-        .ReadFrom.Configuration(context.Configuration)
-        .Enrich.FromLogContext()
-        .Enrich.WithProperty("Application", "FlashInterview.Web")
-        .WriteTo.Console();
-});
-
-builder.Logging.AddOpenTelemetry(logging =>
-{
-    logging.IncludeFormattedMessage = true;
-    logging.IncludeScopes = true;
-    logging.ParseStateValues = true;
-    logging.SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(webServiceName));
-
-    if (!string.IsNullOrWhiteSpace(webOtlpEndpoint))
-    {
-        logging.AddOtlpExporter(options => options.Endpoint = new Uri(webOtlpEndpoint));
-    }
-});
-
-builder.Services
-    .AddOpenTelemetry()
-    .ConfigureResource(resource => resource.AddService(webServiceName))
-    .WithMetrics(metrics =>
-    {
-        metrics
-            .AddAspNetCoreInstrumentation()
-            .AddHttpClientInstrumentation()
-            .AddRuntimeInstrumentation()
-            .AddMeter("Microsoft.AspNetCore.Hosting")
-            .AddMeter("Microsoft.AspNetCore.Server.Kestrel")
-            .AddMeter("System.Net.Http");
-
-        if (!string.IsNullOrWhiteSpace(webOtlpEndpoint))
-        {
-            metrics.AddOtlpExporter(options => options.Endpoint = new Uri(webOtlpEndpoint));
-        }
-    })
-    .WithTracing(tracing =>
+builder.AddFlashInterviewSerilog("FlashInterview.Web");
+builder.AddFlashInterviewOpenTelemetry(
+    webServiceName,
+    webOtlpEndpoint,
+    "FlashInterview.Web",
+    configureTracing: tracing =>
     {
         tracing
             .AddAspNetCoreInstrumentation(options =>
@@ -67,11 +27,6 @@ builder.Services
                     !httpContext.Request.Path.StartsWithSegments("/healthz");
             })
             .AddHttpClientInstrumentation();
-
-        if (!string.IsNullOrWhiteSpace(webOtlpEndpoint))
-        {
-            tracing.AddOtlpExporter(options => options.Endpoint = new Uri(webOtlpEndpoint));
-        }
     });
 
 builder.Services.AddControllersWithViews();
@@ -192,35 +147,7 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
-app.Use(async (httpContext, next) =>
-{
-    var correlationId = GetOrCreateRequestHeader(httpContext, "X-Correlation-Id", httpContext.TraceIdentifier);
-    var sessionId = GetOrCreateRequestHeader(httpContext, "X-Session-Id", Guid.NewGuid().ToString("n"));
-
-    httpContext.Items["CorrelationId"] = correlationId;
-    httpContext.Items["SessionId"] = sessionId;
-
-    httpContext.Response.OnStarting(() =>
-    {
-        httpContext.Response.Headers["X-Correlation-Id"] = correlationId;
-        httpContext.Response.Headers["X-Session-Id"] = sessionId;
-        return Task.CompletedTask;
-    });
-
-    using var loggerScope = app.Logger.BeginScope(new Dictionary<string, object?>
-    {
-        ["CorrelationId"] = correlationId,
-        ["SessionId"] = sessionId,
-        ["TraceIdentifier"] = httpContext.TraceIdentifier,
-        ["RequestPath"] = httpContext.Request.Path.Value,
-        ["RequestMethod"] = httpContext.Request.Method
-    });
-    using var correlationProperty = LogContext.PushProperty("CorrelationId", correlationId);
-    using var sessionProperty = LogContext.PushProperty("SessionId", sessionId);
-    using var traceIdentifierProperty = LogContext.PushProperty("TraceIdentifier", httpContext.TraceIdentifier);
-
-    await next(httpContext);
-});
+app.UseFlashInterviewCorrelation();
 
 app.UseExceptionHandler(errorApp =>
 {
@@ -245,28 +172,7 @@ app.UseExceptionHandler(errorApp =>
     });
 });
 
-app.UseSerilogRequestLogging(options =>
-{
-    options.MessageTemplate =
-        "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms ({Application})";
-    options.GetLevel = (httpContext, _, exception) =>
-        exception is not null || httpContext.Response.StatusCode >= StatusCodes.Status500InternalServerError
-            ? LogEventLevel.Error
-            : LogEventLevel.Information;
-    options.EnrichDiagnosticContext = (diagnosticContext, _) =>
-    {
-        diagnosticContext.Set("Application", "FlashInterview.Web");
-        if (_.Items.TryGetValue("CorrelationId", out var correlationId))
-        {
-            diagnosticContext.Set("CorrelationId", correlationId);
-        }
-
-        if (_.Items.TryGetValue("SessionId", out var sessionId))
-        {
-            diagnosticContext.Set("SessionId", sessionId);
-        }
-    };
-});
+app.UseFlashInterviewSerilogRequestLogging("FlashInterview.Web");
 app.UseHttpsRedirection();
 app.UseRouting();
 
@@ -282,29 +188,5 @@ app.MapControllerRoute(
 
 
 app.Run();
-
-static string GetOrCreateRequestHeader(HttpContext httpContext, string headerName, string fallbackValue)
-{
-    var value = httpContext.Request.Headers[headerName].FirstOrDefault();
-    return IsValidLogDiscoveryIdentifier(value) ? value! : NormalizeLogDiscoveryIdentifier(fallbackValue);
-}
-
-static bool IsValidLogDiscoveryIdentifier(string? value)
-{
-    return !string.IsNullOrWhiteSpace(value)
-        && value.Length <= 64
-        && value.All(IsLogDiscoveryIdentifierCharacter);
-}
-
-static string NormalizeLogDiscoveryIdentifier(string value)
-{
-    var normalized = new string(value.Where(IsLogDiscoveryIdentifierCharacter).Take(64).ToArray());
-    return string.IsNullOrWhiteSpace(normalized) ? Guid.NewGuid().ToString("n") : normalized;
-}
-
-static bool IsLogDiscoveryIdentifierCharacter(char value)
-{
-    return char.IsAsciiLetterOrDigit(value) || value is '-' or '_';
-}
 
 public partial class Program;
