@@ -92,6 +92,7 @@ builder.Services
 builder.Services.AddFlashInterviewInfrastructure(builder.Configuration);
 builder.Services.AddScoped<IAuthWorkflow, AuthWorkflow>();
 builder.Services.AddScoped<IUserManagementWorkflow, UserManagementWorkflow>();
+builder.Services.AddScoped<ISensitiveWordAdministrationService, SensitiveWordAdministrationService>();
 builder.Services.AddSingleton<ISensitiveWordMatcherCache, SensitiveWordMatcherCache>();
 builder.Services.AddSingleton<MaskingMetrics>();
 builder.Services.AddControllers();
