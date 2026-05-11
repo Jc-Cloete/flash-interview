@@ -2,9 +2,7 @@ using FlashInterview.Api.Security;
 using FlashInterview.Application.Auth;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Swashbuckle.AspNetCore.Annotations;
-using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 
 namespace FlashInterview.Api.Controllers;
@@ -29,7 +27,7 @@ public sealed class AuthController(IAuthWorkflow authWorkflow) : ControllerBase
             return BadRequest();
         }
 
-        if (!TryValidateRequest(request))
+        if (!ModelState.TryAddDataAnnotationErrors(request))
         {
             return ValidationProblem(ModelState);
         }
@@ -53,7 +51,7 @@ public sealed class AuthController(IAuthWorkflow authWorkflow) : ControllerBase
             return BadRequest();
         }
 
-        if (!TryValidateRequest(request))
+        if (!ModelState.TryAddDataAnnotationErrors(request))
         {
             return ValidationProblem(ModelState);
         }
@@ -88,49 +86,14 @@ public sealed class AuthController(IAuthWorkflow authWorkflow) : ControllerBase
         }
     }
 
-    private bool TryValidateRequest<TRequest>(TRequest request)
-        where TRequest : notnull
-    {
-        var validationResults = new List<ValidationResult>();
-        var context = new ValidationContext(request);
-        if (Validator.TryValidateObject(request, context, validationResults, validateAllProperties: true))
-        {
-            return true;
-        }
-
-        foreach (var validationResult in validationResults)
-        {
-            var memberNames = validationResult.MemberNames.Any()
-                ? validationResult.MemberNames
-                : [string.Empty];
-
-            foreach (var memberName in memberNames)
-            {
-                ModelState.AddModelError(memberName, validationResult.ErrorMessage ?? "The request is invalid.");
-            }
-        }
-
-        return false;
-    }
-
     private ActionResult<AuthenticatedUserDto> MapWorkflowResult(AuthWorkflowResult result)
     {
         return result.Status switch
         {
             AuthWorkflowStatus.Succeeded => Ok(result.User ?? throw new InvalidOperationException("Successful auth workflow result did not include a user.")),
             AuthWorkflowStatus.Unauthorized => Unauthorized(),
-            AuthWorkflowStatus.ValidationFailed => ValidationProblem(AddValidationErrors(result.ValidationErrors)),
+            AuthWorkflowStatus.ValidationFailed => ValidationProblem(ModelState.AddWorkflowValidationErrors(result.ValidationErrors)),
             _ => throw new InvalidOperationException($"Unsupported auth workflow status '{result.Status}'.")
         };
-    }
-
-    private ModelStateDictionary AddValidationErrors(IReadOnlyList<AuthWorkflowValidationError>? validationErrors)
-    {
-        foreach (var validationError in validationErrors ?? [])
-        {
-            ModelState.AddModelError(validationError.Key, validationError.Message);
-        }
-
-        return ModelState;
     }
 }

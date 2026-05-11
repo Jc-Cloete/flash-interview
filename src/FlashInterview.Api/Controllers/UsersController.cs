@@ -2,9 +2,7 @@ using FlashInterview.Api.Security;
 using FlashInterview.Application.Auth;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Swashbuckle.AspNetCore.Annotations;
-using System.ComponentModel.DataAnnotations;
 
 namespace FlashInterview.Api.Controllers;
 
@@ -31,7 +29,7 @@ public sealed class UsersController(IUserManagementWorkflow userManagementWorkfl
     [SwaggerResponse(StatusCodes.Status409Conflict, "A user already exists for the supplied email.")]
     public async Task<ActionResult<UserListItemDto>> Create([FromBody] CreateUserRequest request)
     {
-        if (!TryValidateRequest(request))
+        if (!ModelState.TryAddDataAnnotationErrors(request))
         {
             return ValidationProblem(ModelState);
         }
@@ -54,31 +52,6 @@ public sealed class UsersController(IUserManagementWorkflow userManagementWorkfl
         return MapUserWorkflowResult(result);
     }
 
-    private bool TryValidateRequest<TRequest>(TRequest request)
-        where TRequest : notnull
-    {
-        var validationResults = new List<ValidationResult>();
-        var context = new ValidationContext(request);
-        if (Validator.TryValidateObject(request, context, validationResults, validateAllProperties: true))
-        {
-            return true;
-        }
-
-        foreach (var validationResult in validationResults)
-        {
-            var memberNames = validationResult.MemberNames.Any()
-                ? validationResult.MemberNames
-                : [string.Empty];
-
-            foreach (var memberName in memberNames)
-            {
-                ModelState.AddModelError(memberName, validationResult.ErrorMessage ?? "The request is invalid.");
-            }
-        }
-
-        return false;
-    }
-
     private ActionResult<UserListItemDto> MapCreateWorkflowResult(UserManagementWorkflowUserResult result)
     {
         return result.Status switch
@@ -87,7 +60,7 @@ public sealed class UsersController(IUserManagementWorkflow userManagementWorkfl
                 $"/api/users/{Uri.EscapeDataString((result.User ?? throw new InvalidOperationException("Successful user workflow result did not include a user.")).Id)}",
                 result.User),
             UserManagementWorkflowStatus.Conflict => Conflict(),
-            UserManagementWorkflowStatus.ValidationFailed => ValidationProblem(AddValidationErrors(result.ValidationErrors)),
+            UserManagementWorkflowStatus.ValidationFailed => ValidationProblem(ModelState.AddWorkflowValidationErrors(result.ValidationErrors)),
             UserManagementWorkflowStatus.NotFound => NotFound(),
             _ => throw new InvalidOperationException($"Unsupported user management workflow status '{result.Status}'.")
         };
@@ -100,18 +73,8 @@ public sealed class UsersController(IUserManagementWorkflow userManagementWorkfl
             UserManagementWorkflowStatus.Succeeded => Ok(result.User ?? throw new InvalidOperationException("Successful user workflow result did not include a user.")),
             UserManagementWorkflowStatus.NotFound => NotFound(),
             UserManagementWorkflowStatus.Conflict => Conflict(),
-            UserManagementWorkflowStatus.ValidationFailed => ValidationProblem(AddValidationErrors(result.ValidationErrors)),
+            UserManagementWorkflowStatus.ValidationFailed => ValidationProblem(ModelState.AddWorkflowValidationErrors(result.ValidationErrors)),
             _ => throw new InvalidOperationException($"Unsupported user management workflow status '{result.Status}'.")
         };
-    }
-
-    private ModelStateDictionary AddValidationErrors(IReadOnlyList<UserManagementWorkflowValidationError>? validationErrors)
-    {
-        foreach (var validationError in validationErrors ?? [])
-        {
-            ModelState.AddModelError(validationError.Key, validationError.Message);
-        }
-
-        return ModelState;
     }
 }
