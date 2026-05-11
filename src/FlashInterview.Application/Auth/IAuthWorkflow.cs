@@ -2,9 +2,9 @@ namespace FlashInterview.Application.Auth;
 
 public interface IAuthWorkflow
 {
-    Task<AuthWorkflowResult> LoginAsync(LoginRequest request);
+    Task<AuthWorkflowResult> LoginAsync(LoginRequest request, CancellationToken cancellationToken);
 
-    Task<AuthWorkflowResult> ExternalSignInAsync(ExternalLoginRequest request);
+    Task<AuthWorkflowResult> ExternalSignInAsync(ExternalLoginRequest request, CancellationToken cancellationToken);
 }
 
 public sealed record AuthWorkflowResult(

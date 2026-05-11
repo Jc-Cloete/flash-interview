@@ -32,7 +32,7 @@ public sealed class AuthController(IAuthWorkflow authWorkflow) : ControllerBase
             return ValidationProblem(ModelState);
         }
 
-        var result = await authWorkflow.LoginAsync(request);
+        var result = await authWorkflow.LoginAsync(request, cancellationToken);
         return MapWorkflowResult(result);
     }
 
@@ -56,7 +56,7 @@ public sealed class AuthController(IAuthWorkflow authWorkflow) : ControllerBase
             return ValidationProblem(ModelState);
         }
 
-        var result = await authWorkflow.ExternalSignInAsync(request);
+        var result = await authWorkflow.ExternalSignInAsync(request, cancellationToken);
         return MapWorkflowResult(result);
     }
 

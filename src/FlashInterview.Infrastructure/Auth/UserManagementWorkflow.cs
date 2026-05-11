@@ -142,15 +142,46 @@ public sealed class UserManagementWorkflow(
 
     private async Task EnsureRoleExistsAsync(string role)
     {
-        if (!await roleManager.RoleExistsAsync(role))
+        if (await roleManager.RoleExistsAsync(role))
         {
-            var result = await roleManager.CreateAsync(new IdentityRole(role));
-            if (!result.Succeeded)
-            {
-                throw new InvalidOperationException(
-                    $"Could not create role '{role}': {string.Join("; ", result.Errors.Select(error => error.Description))}");
-            }
+            return;
         }
+
+        IdentityResult result;
+        try
+        {
+            result = await roleManager.CreateAsync(new IdentityRole(role));
+        }
+        catch (DbUpdateException)
+        {
+            if (await roleManager.RoleExistsAsync(role))
+            {
+                return;
+            }
+
+            throw;
+        }
+
+        if (result.Succeeded)
+        {
+            return;
+        }
+
+        if (IsDuplicateRoleCreation(result) && await roleManager.RoleExistsAsync(role))
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            $"Could not create role '{role}': {string.Join("; ", result.Errors.Select(error => error.Description))}");
+    }
+
+    private static bool IsDuplicateRoleCreation(IdentityResult result)
+    {
+        return result.Errors.Any(error =>
+            error.Code.Contains("Duplicate", StringComparison.OrdinalIgnoreCase)
+            || error.Description.Contains("already exists", StringComparison.OrdinalIgnoreCase)
+            || error.Description.Contains("duplicate", StringComparison.OrdinalIgnoreCase));
     }
 
     private async Task<IdentityResult> UpdateSecurityStampAsync(FlashInterviewUser user)

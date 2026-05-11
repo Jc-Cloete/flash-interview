@@ -9,10 +9,13 @@ public sealed class AuthWorkflow(
 {
     private const string GoogleProvider = "Google";
 
-    public async Task<AuthWorkflowResult> LoginAsync(LoginRequest request)
+    public async Task<AuthWorkflowResult> LoginAsync(LoginRequest request, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         var email = request.Email.Trim();
         var user = await userManager.FindByEmailAsync(email);
+        cancellationToken.ThrowIfCancellationRequested();
         if (user is null)
         {
             return AuthWorkflowResult.Unauthorized();
@@ -22,17 +25,20 @@ public sealed class AuthWorkflow(
             user,
             request.Password,
             lockoutOnFailure: true);
+        cancellationToken.ThrowIfCancellationRequested();
 
         if (!signInResult.Succeeded)
         {
             return AuthWorkflowResult.Unauthorized();
         }
 
-        return AuthWorkflowResult.Succeeded(await CreateAuthenticatedUserAsync(user, email));
+        return AuthWorkflowResult.Succeeded(await CreateAuthenticatedUserAsync(user, cancellationToken, email));
     }
 
-    public async Task<AuthWorkflowResult> ExternalSignInAsync(ExternalLoginRequest request)
+    public async Task<AuthWorkflowResult> ExternalSignInAsync(ExternalLoginRequest request, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         if (!request.EmailVerified)
         {
             return AuthWorkflowResult.ValidationFailed(
@@ -43,8 +49,8 @@ public sealed class AuthWorkflow(
             ]);
         }
 
-        var provider = request.Provider.Trim();
-        if (!IsAllowedExternalLoginProvider(provider))
+        var submittedProvider = request.Provider.Trim();
+        if (!IsAllowedExternalLoginProvider(submittedProvider))
         {
             return AuthWorkflowResult.ValidationFailed(
             [
@@ -54,15 +60,18 @@ public sealed class AuthWorkflow(
             ]);
         }
 
+        var provider = GoogleProvider;
         var providerKey = request.ProviderKey.Trim();
         var user = await userManager.FindByLoginAsync(provider, providerKey);
+        cancellationToken.ThrowIfCancellationRequested();
         if (user is not null)
         {
-            return AuthWorkflowResult.Succeeded(await CreateAuthenticatedUserAsync(user));
+            return AuthWorkflowResult.Succeeded(await CreateAuthenticatedUserAsync(user, cancellationToken));
         }
 
         var email = request.Email.Trim();
         user = await userManager.FindByEmailAsync(email);
+        cancellationToken.ThrowIfCancellationRequested();
         if (user is null)
         {
             user = new FlashInterviewUser
@@ -76,6 +85,7 @@ public sealed class AuthWorkflow(
             };
 
             var createResult = await userManager.CreateAsync(user);
+            cancellationToken.ThrowIfCancellationRequested();
             if (!createResult.Succeeded)
             {
                 return AuthWorkflowResult.ValidationFailed(createResult.ToAuthWorkflowValidationErrors());
@@ -86,6 +96,7 @@ public sealed class AuthWorkflow(
             user.EmailConfirmed = true;
             user.UpdatedAt = DateTimeOffset.UtcNow;
             var updateResult = await userManager.UpdateAsync(user);
+            cancellationToken.ThrowIfCancellationRequested();
             if (!updateResult.Succeeded)
             {
                 return AuthWorkflowResult.ValidationFailed(updateResult.ToAuthWorkflowValidationErrors());
@@ -95,6 +106,7 @@ public sealed class AuthWorkflow(
         var linkResult = await userManager.AddLoginAsync(
             user,
             new UserLoginInfo(provider, providerKey, provider));
+        cancellationToken.ThrowIfCancellationRequested();
         if (!linkResult.Succeeded)
         {
             return AuthWorkflowResult.ValidationFailed(linkResult.ToAuthWorkflowValidationErrors());
@@ -105,25 +117,29 @@ public sealed class AuthWorkflow(
             user.DisplayName = request.DisplayName.Trim();
             user.UpdatedAt = DateTimeOffset.UtcNow;
             var updateResult = await userManager.UpdateAsync(user);
+            cancellationToken.ThrowIfCancellationRequested();
             if (!updateResult.Succeeded)
             {
                 return AuthWorkflowResult.ValidationFailed(updateResult.ToAuthWorkflowValidationErrors());
             }
         }
 
-        return AuthWorkflowResult.Succeeded(await CreateAuthenticatedUserAsync(user));
+        return AuthWorkflowResult.Succeeded(await CreateAuthenticatedUserAsync(user, cancellationToken));
     }
 
     private static bool IsAllowedExternalLoginProvider(string provider)
     {
-        return string.Equals(provider, GoogleProvider, StringComparison.Ordinal);
+        return string.Equals(provider, GoogleProvider, StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task<AuthenticatedUserDto> CreateAuthenticatedUserAsync(
         FlashInterviewUser user,
+        CancellationToken cancellationToken,
         string? fallbackEmail = null)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var roles = await userManager.GetRolesAsync(user);
+        cancellationToken.ThrowIfCancellationRequested();
         return new AuthenticatedUserDto(
             user.Id,
             user.Email ?? fallbackEmail ?? user.UserName ?? "",

@@ -54,23 +54,21 @@ public sealed class UsersController(IUserManagementWorkflow userManagementWorkfl
 
     private ActionResult<UserListItemDto> MapCreateWorkflowResult(UserManagementWorkflowUserResult result)
     {
-        return result.Status switch
-        {
-            UserManagementWorkflowStatus.Succeeded => Created(
-                $"/api/users/{Uri.EscapeDataString((result.User ?? throw new InvalidOperationException("Successful user workflow result did not include a user.")).Id)}",
-                result.User),
-            UserManagementWorkflowStatus.Conflict => Conflict(),
-            UserManagementWorkflowStatus.ValidationFailed => ValidationProblem(ModelState.AddWorkflowValidationErrors(result.ValidationErrors)),
-            UserManagementWorkflowStatus.NotFound => NotFound(),
-            _ => throw new InvalidOperationException($"Unsupported user management workflow status '{result.Status}'.")
-        };
+        return MapWorkflowResult(result, user => Created($"/api/users/{Uri.EscapeDataString(user.Id)}", user));
     }
 
     private ActionResult<UserListItemDto> MapUserWorkflowResult(UserManagementWorkflowUserResult result)
     {
+        return MapWorkflowResult(result, user => Ok(user));
+    }
+
+    private ActionResult<UserListItemDto> MapWorkflowResult(
+        UserManagementWorkflowUserResult result,
+        Func<UserListItemDto, ActionResult<UserListItemDto>> succeeded)
+    {
         return result.Status switch
         {
-            UserManagementWorkflowStatus.Succeeded => Ok(result.User ?? throw new InvalidOperationException("Successful user workflow result did not include a user.")),
+            UserManagementWorkflowStatus.Succeeded => succeeded(result.User ?? throw new InvalidOperationException("Successful user workflow result did not include a user.")),
             UserManagementWorkflowStatus.NotFound => NotFound(),
             UserManagementWorkflowStatus.Conflict => Conflict(),
             UserManagementWorkflowStatus.ValidationFailed => ValidationProblem(ModelState.AddWorkflowValidationErrors(result.ValidationErrors)),

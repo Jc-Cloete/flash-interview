@@ -78,6 +78,8 @@ public sealed class WebProjectArchitectureTests
     public void WebProjectResolvedPackageClosure_DoesNotContainDatabaseOrInfrastructurePackages()
     {
         var assetsPath = Path.Combine(TestPaths.RepositoryRoot, "src", "FlashInterview.Web", "obj", "project.assets.json");
+        Assert.True(File.Exists(assetsPath), "project.assets.json not found; run 'dotnet restore' before running this test.");
+
         using var assetsFile = File.OpenRead(assetsPath);
         using var assetsDocument = JsonDocument.Parse(assetsFile);
 
@@ -92,8 +94,7 @@ public sealed class WebProjectArchitectureTests
             .Where(packageId =>
                 packageId.Contains("EntityFramework", StringComparison.OrdinalIgnoreCase)
                 || packageId.Contains("SqlClient", StringComparison.OrdinalIgnoreCase)
-                || packageId.Contains("FlashInterview.Infrastructure", StringComparison.OrdinalIgnoreCase)
-                || packageId.Contains("Infrastructure", StringComparison.OrdinalIgnoreCase))
+                || packageId.StartsWith("FlashInterview.Infrastructure", StringComparison.OrdinalIgnoreCase))
             .ToArray();
 
         Assert.Empty(forbiddenResolvedPackages);

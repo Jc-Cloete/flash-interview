@@ -175,6 +175,25 @@ public sealed class AuthApiTests
     }
 
     [Fact]
+    public async Task ExternalSignInEndpoint_AcceptsGoogleProviderCaseInsensitively()
+    {
+        await using var factory = new AuthApiFactory(AdminApiKey);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+
+        using var response = await PostExternalSignInAsync(
+            client,
+            new ExternalLoginRequest(
+                "google",
+                "google-user-1",
+                "new-user@example.test",
+                EmailVerified: true,
+                "New User"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(await factory.UserHasExternalLoginAsync("new-user@example.test", "Google", "google-user-1"));
+    }
+
+    [Fact]
     public async Task ExternalSignInEndpoint_SupportsLegacyRoute()
     {
         await using var factory = new AuthApiFactory(AdminApiKey);

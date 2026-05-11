@@ -2,322 +2,195 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Reduce the five architecture smells found in the review while preserving the current ASP.NET Core, MSSQL, Serilog, Swagger, and MVC-over-HTTP architecture.
+**Goal:** Reduce the architecture smells found in review while preserving the ASP.NET Core, MSSQL, Serilog, Swagger, and MVC-over-HTTP architecture.
 
-**Architecture:** Keep `FlashInterview.Web` API-only and database-free. Move controller-owned workflows behind API-facing services, centralize cache invalidation around sensitive-word mutations, extract duplicated hosting setup into shared API/Web extension methods, and clean dependency drift without expanding scope.
+**Architecture:** Keep `FlashInterview.Web` API-only and database-free. Expose auth/user workflows through Application contracts, keep Identity/EF details in Infrastructure, centralize sensitive-word cache invalidation behind an API service, and share hosting setup through a real `FlashInterview.Hosting` project.
 
 **Tech Stack:** C#/.NET 10, ASP.NET Core MVC/Web API, ASP.NET Core Identity, EF Core SQL Server, xUnit, Serilog, OpenTelemetry, Swagger/Swashbuckle.
 
 ---
 
-## File Structure
+## Current File Structure
 
-- `src/FlashInterview.Api/Auth/IAuthWorkflow.cs`: API-layer auth use-case interface.
-- `src/FlashInterview.Api/Auth/AuthWorkflow.cs`: local and external sign-in orchestration currently in `AuthController`.
-- `src/FlashInterview.Api/Auth/IdentityResultExtensions.cs`: shared Identity-to-ModelState helper.
-- `src/FlashInterview.Api/Users/IUserManagementWorkflow.cs`: API-layer user-management use-case interface.
-- `src/FlashInterview.Api/Users/UserManagementWorkflow.cs`: list/create/admin-role orchestration currently in `UsersController`.
-- `src/FlashInterview.Api/SensitiveWords/ISensitiveWordAdministrationService.cs`: sensitive-word mutation/list interface.
-- `src/FlashInterview.Api/SensitiveWords/SensitiveWordAdministrationService.cs`: repository calls plus cache invalidation.
-- `src/FlashInterview.Api/Hosting/ObservabilityExtensions.cs`: shared API/Web compatible logging and OpenTelemetry registration.
-- `src/FlashInterview.Api/Hosting/CorrelationExtensions.cs`: reusable correlation/session middleware helpers.
-- `src/FlashInterview.Api/Controllers/AuthController.cs`: slim HTTP adapter.
-- `src/FlashInterview.Api/Controllers/UsersController.cs`: slim HTTP adapter.
-- `src/FlashInterview.Api/Controllers/SensitiveWordsController.cs`: slim HTTP adapter.
-- `src/FlashInterview.Api/Program.cs`: use extracted hosting extensions.
-- `src/FlashInterview.Web/Program.cs`: use extracted hosting extensions.
-- `src/FlashInterview.Infrastructure/FlashInterview.Infrastructure.csproj`: remove unnecessary package reference.
-- `tests/FlashInterview.Tests/AuthApiTests.cs`: keep existing behavior tests green; add targeted regression if behavior loses coverage.
-- `tests/FlashInterview.Tests/ApiSurfaceTests.cs`: keep sensitive-word cache invalidation behavior green.
-- `tests/FlashInterview.Tests/WebProjectArchitectureTests.cs`: keep Web isolation green.
+- `src/FlashInterview.Application/Auth/IAuthWorkflow.cs`: Application-facing local/external auth workflow contract and typed result records.
+- `src/FlashInterview.Application/Auth/IUserManagementWorkflow.cs`: Application-facing user-management workflow contract and typed result records.
+- `src/FlashInterview.Infrastructure/Auth/AuthWorkflow.cs`: Identity-backed local and external sign-in orchestration.
+- `src/FlashInterview.Infrastructure/Auth/UserManagementWorkflow.cs`: Identity/EF-backed user listing, local-user creation, and admin-role orchestration.
+- `src/FlashInterview.Infrastructure/Auth/IdentityResultExtensions.cs`: Identity error mapping for Application workflow validation results.
+- `src/FlashInterview.Application/SensitiveWords/ISensitiveWordRepository.cs`: sensitive-word persistence contract.
+- `src/FlashInterview.Infrastructure/SensitiveWords/SqlSensitiveWordRepository.cs`: SQL Server implementation of the sensitive-word repository.
+- `src/FlashInterview.Api/SensitiveWords/ISensitiveWordAdministrationService.cs`: API service boundary for sensitive-word administration and matcher-cache invalidation.
+- `src/FlashInterview.Api/SensitiveWords/SensitiveWordAdministrationService.cs`: repository delegation plus matcher-cache invalidation after successful create/update/delete.
+- `src/FlashInterview.Hosting/FlashInterview.Hosting.csproj`: shared hosting/observability project referenced by API and Web.
+- `src/FlashInterview.Hosting/ObservabilityExtensions.cs`: shared Serilog and OpenTelemetry registration helpers.
+- `src/FlashInterview.Hosting/CorrelationExtensions.cs`: shared correlation/session middleware and request logging helpers.
+- `src/FlashInterview.Api/Controllers/AuthController.cs`: HTTP adapter for auth request parsing, validation, and workflow-result mapping.
+- `src/FlashInterview.Api/Controllers/UsersController.cs`: HTTP adapter for user-management request validation and workflow-result mapping.
+- `src/FlashInterview.Api/Controllers/SensitiveWordsController.cs`: HTTP adapter for sensitive-word administration.
+- `src/FlashInterview.Api/Program.cs`: API composition root; registers Infrastructure, API-only services, Swagger, auth, health, and rate limiting.
+- `src/FlashInterview.Web/Program.cs`: MVC composition root; references Application and Hosting only.
+- `tests/FlashInterview.Tests/WebProjectArchitectureTests.cs`: guards Web project references, source usage, and resolved package closure against database/infrastructure drift.
 
 ---
 
-### Task 1: Move Auth Workflow Out Of `AuthController`
+### Task 1: Move Auth Workflow Behind Application Contracts
 
 **Files:**
-- Create: `src/FlashInterview.Api/Auth/IAuthWorkflow.cs`
-- Create: `src/FlashInterview.Api/Auth/AuthWorkflow.cs`
-- Create: `src/FlashInterview.Api/Auth/IdentityResultExtensions.cs`
+- Create: `src/FlashInterview.Application/Auth/IAuthWorkflow.cs`
+- Create: `src/FlashInterview.Infrastructure/Auth/AuthWorkflow.cs`
+- Create: `src/FlashInterview.Infrastructure/Auth/IdentityResultExtensions.cs`
 - Modify: `src/FlashInterview.Api/Controllers/AuthController.cs`
-- Modify: `src/FlashInterview.Api/Program.cs`
+- Modify: `src/FlashInterview.Infrastructure/DependencyInjection.cs`
 - Test: `tests/FlashInterview.Tests/AuthApiTests.cs`
 
-- [ ] **Step 1: Add the auth workflow contract**
+- [x] **Step 1: Define Application workflow contract**
 
-Create `IAuthWorkflow` with this public surface:
+`IAuthWorkflow` returns typed `AuthWorkflowResult` values from `FlashInterview.Application.Auth` and does not expose MVC or Infrastructure types.
 
-```csharp
-using FlashInterview.Application.Auth;
-using Microsoft.AspNetCore.Mvc;
+- [x] **Step 2: Implement Identity-backed workflow in Infrastructure**
 
-namespace FlashInterview.Api.Auth;
+`AuthWorkflow` owns `UserManager<FlashInterviewUser>`, `SignInManager<FlashInterviewUser>`, local password checks, external-login linking, user creation, email confirmation, display-name updates, and DTO mapping.
 
-public interface IAuthWorkflow
-{
-    Task<ActionResult<AuthenticatedUserDto>> LoginAsync(LoginRequest request, ModelStateDictionary modelState);
+- [x] **Step 3: Keep `AuthController` as an HTTP adapter**
 
-    Task<ActionResult<AuthenticatedUserDto>> ExternalSignInAsync(ExternalLoginRequest request, ModelStateDictionary modelState);
-}
-```
+`AuthController` keeps route/Swagger attributes, request parsing, request validation, and maps workflow results to `Ok`, `Unauthorized`, and `ValidationProblem`.
 
-- [ ] **Step 2: Move Identity orchestration into `AuthWorkflow`**
+- [x] **Step 4: Register through Infrastructure DI**
 
-Create `AuthWorkflow` and move the current logic from `AuthController.Login` and `AuthController.ExternalSignIn` into methods with the same behavior:
+`AddFlashInterviewInfrastructure` registers `IAuthWorkflow` to `AuthWorkflow` alongside the Identity/EF setup it depends on.
 
-```csharp
-public sealed class AuthWorkflow(
-    UserManager<FlashInterviewUser> userManager,
-    SignInManager<FlashInterviewUser> signInManager) : IAuthWorkflow
-{
-    private const string GoogleProvider = "Google";
-
-    public async Task<ActionResult<AuthenticatedUserDto>> LoginAsync(LoginRequest request, ModelStateDictionary modelState)
-    {
-        // same trim, FindByEmailAsync, CheckPasswordSignInAsync, Unauthorized, and DTO mapping behavior as the current controller
-    }
-
-    public async Task<ActionResult<AuthenticatedUserDto>> ExternalSignInAsync(ExternalLoginRequest request, ModelStateDictionary modelState)
-    {
-        // same verified-email, provider validation, FindByLoginAsync, FindByEmailAsync, create/link/update behavior as the current controller
-    }
-}
-```
-
-When adding validation errors from Identity, use `IdentityResultExtensions.AddIdentityErrors(modelState, result)`.
-
-- [ ] **Step 3: Slim `AuthController` to request parsing, validation, and delegation**
-
-Keep `JsonElement` parsing behavior, Swagger attributes, routes, legacy endpoint, and HTTP responses. The controller should call:
-
-```csharp
-return await authWorkflow.LoginAsync(request, ModelState);
-return await authWorkflow.ExternalSignInAsync(request, ModelState);
-```
-
-- [ ] **Step 4: Register the workflow**
-
-Add this registration near the other API services:
-
-```csharp
-builder.Services.AddScoped<IAuthWorkflow, AuthWorkflow>();
-```
-
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify**
 
 Run:
 
 ```bash
 dotnet test FlashInterview.slnx --filter AuthApiTests
 dotnet test FlashInterview.slnx
-git add src/FlashInterview.Api/Auth src/FlashInterview.Api/Controllers/AuthController.cs src/FlashInterview.Api/Program.cs
-git commit -m "refactor: move auth workflow out of controller"
 ```
-
-Expected: all tests pass.
 
 ---
 
-### Task 2: Move User Management Workflow Out Of `UsersController`
+### Task 2: Move User Management Workflow Behind Application Contracts
 
 **Files:**
-- Create: `src/FlashInterview.Api/Users/IUserManagementWorkflow.cs`
-- Create: `src/FlashInterview.Api/Users/UserManagementWorkflow.cs`
+- Create: `src/FlashInterview.Application/Auth/IUserManagementWorkflow.cs`
+- Create: `src/FlashInterview.Infrastructure/Auth/UserManagementWorkflow.cs`
 - Modify: `src/FlashInterview.Api/Controllers/UsersController.cs`
-- Modify: `src/FlashInterview.Api/Program.cs`
+- Modify: `src/FlashInterview.Infrastructure/DependencyInjection.cs`
 - Test: `tests/FlashInterview.Tests/AuthApiTests.cs`
 
-- [ ] **Step 1: Add user-management workflow contract**
+- [x] **Step 1: Define Application workflow contract**
 
-Create an interface with:
+`IUserManagementWorkflow` returns typed user-management results from `FlashInterview.Application.Auth` and does not expose MVC, EF, or Infrastructure types.
 
-```csharp
-using FlashInterview.Application.Auth;
-using Microsoft.AspNetCore.Mvc;
+- [x] **Step 2: Implement Identity/EF orchestration in Infrastructure**
 
-namespace FlashInterview.Api.Users;
+`UserManagementWorkflow` owns user queries, role joins, local-user creation, admin-role assignment/removal, role creation, security-stamp updates, locked-out calculation, and ordered role projection.
 
-public interface IUserManagementWorkflow
-{
-    Task<ActionResult<IReadOnlyList<UserListItemDto>>> ListAsync(CancellationToken cancellationToken);
+- [x] **Step 3: Keep `UsersController` as an HTTP adapter**
 
-    Task<ActionResult<UserListItemDto>> CreateAsync(CreateUserRequest request, ModelStateDictionary modelState);
+`UsersController` keeps route/Swagger attributes, request validation, and maps workflow results to `Ok`, `Created`, `Conflict`, `NotFound`, and `ValidationProblem`.
 
-    Task<ActionResult<UserListItemDto>> UpdateAdminRoleAsync(string id, UserRoleUpdateRequest request, ModelStateDictionary modelState);
-}
-```
+- [x] **Step 4: Register through Infrastructure DI**
 
-- [ ] **Step 2: Move user and role orchestration into `UserManagementWorkflow`**
+`AddFlashInterviewInfrastructure` registers `IUserManagementWorkflow` to `UserManagementWorkflow`.
 
-Move the current list/create/update-role logic from `UsersController` into `UserManagementWorkflow`, preserving:
-
-- `FindByEmailAsync` conflict behavior.
-- role creation before admin assignment.
-- security-stamp update after role changes.
-- locked-out calculation.
-- ordered role list.
-- current validation problem behavior for Identity errors.
-
-- [ ] **Step 3: Slim `UsersController`**
-
-The controller should keep route and Swagger attributes only and delegate:
-
-```csharp
-return await userManagementWorkflow.ListAsync(cancellationToken);
-return await userManagementWorkflow.CreateAsync(request, ModelState);
-return await userManagementWorkflow.UpdateAdminRoleAsync(id, request, ModelState);
-```
-
-- [ ] **Step 4: Register the workflow**
-
-Add:
-
-```csharp
-builder.Services.AddScoped<IUserManagementWorkflow, UserManagementWorkflow>();
-```
-
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify**
 
 Run:
 
 ```bash
 dotnet test FlashInterview.slnx --filter AuthApiTests
 dotnet test FlashInterview.slnx
-git add src/FlashInterview.Api/Users src/FlashInterview.Api/Controllers/UsersController.cs src/FlashInterview.Api/Program.cs
-git commit -m "refactor: move user management workflow out of controller"
 ```
-
-Expected: all tests pass.
 
 ---
 
 ### Task 3: Centralize Sensitive-Word Cache Invalidation
 
 **Files:**
+- Use: `src/FlashInterview.Application/SensitiveWords/ISensitiveWordRepository.cs`
+- Use: `src/FlashInterview.Infrastructure/SensitiveWords/SqlSensitiveWordRepository.cs`
 - Create: `src/FlashInterview.Api/SensitiveWords/ISensitiveWordAdministrationService.cs`
 - Create: `src/FlashInterview.Api/SensitiveWords/SensitiveWordAdministrationService.cs`
 - Modify: `src/FlashInterview.Api/Controllers/SensitiveWordsController.cs`
 - Modify: `src/FlashInterview.Api/Program.cs`
 - Test: `tests/FlashInterview.Tests/ApiSurfaceTests.cs`
 
-- [ ] **Step 1: Add administration service interface**
+- [x] **Step 1: Add API administration service**
 
-Create:
+`ISensitiveWordAdministrationService` exposes create/list/get/update/delete operations using Application request/response DTOs.
 
-```csharp
-using FlashInterview.Application.SensitiveWords;
+- [x] **Step 2: Implement repository delegation plus invalidation**
 
-namespace FlashInterview.Api.SensitiveWords;
+`SensitiveWordAdministrationService` injects `ISensitiveWordRepository` and `ISensitiveWordMatcherCache`, invalidating after successful create, non-null update, and successful delete.
 
-public interface ISensitiveWordAdministrationService
-{
-    Task<SensitiveWordDto> CreateAsync(CreateSensitiveWordRequest request, CancellationToken cancellationToken);
-    Task<PagedResponse<SensitiveWordDto>> ListAsync(SensitiveWordQuery query, CancellationToken cancellationToken);
-    Task<SensitiveWordDto?> GetAsync(Guid id, CancellationToken cancellationToken);
-    Task<SensitiveWordDto?> UpdateAsync(Guid id, UpdateSensitiveWordRequest request, CancellationToken cancellationToken);
-    Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken);
-}
-```
+- [x] **Step 3: Slim `SensitiveWordsController`**
 
-- [ ] **Step 2: Implement repository delegation plus invalidation**
+`SensitiveWordsController` depends on the administration service and keeps duplicate-word handling, route/Swagger attributes, and HTTP response mapping.
 
-Create a service that injects `ISensitiveWordRepository` and `ISensitiveWordMatcherCache`. It must call `matcherCache.Invalidate()` after successful create, after non-null update, and after successful delete.
+- [x] **Step 4: Register the service**
 
-- [ ] **Step 3: Slim `SensitiveWordsController`**
+`Program.cs` registers `ISensitiveWordAdministrationService` to `SensitiveWordAdministrationService`.
 
-Replace direct `ISensitiveWordRepository` and `ISensitiveWordMatcherCache` dependencies with `ISensitiveWordAdministrationService`. Keep duplicate-word handling and all Swagger/route behavior unchanged.
-
-- [ ] **Step 4: Register the service**
-
-Add:
-
-```csharp
-builder.Services.AddScoped<ISensitiveWordAdministrationService, SensitiveWordAdministrationService>();
-```
-
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify**
 
 Run:
 
 ```bash
 dotnet test FlashInterview.slnx --filter ApiSurfaceTests
 dotnet test FlashInterview.slnx
-git add src/FlashInterview.Api/SensitiveWords src/FlashInterview.Api/Controllers/SensitiveWordsController.cs src/FlashInterview.Api/Program.cs
-git commit -m "refactor: centralize sensitive word cache invalidation"
 ```
-
-Expected: all tests pass, including cache invalidation tests around create/update/delete.
 
 ---
 
 ### Task 4: Extract Shared Hosting, Observability, And Correlation Setup
 
 **Files:**
-- Create: `src/FlashInterview.Api/Hosting/ObservabilityExtensions.cs`
-- Create: `src/FlashInterview.Api/Hosting/CorrelationExtensions.cs`
+- Create: `src/FlashInterview.Hosting/FlashInterview.Hosting.csproj`
+- Create: `src/FlashInterview.Hosting/ObservabilityExtensions.cs`
+- Create: `src/FlashInterview.Hosting/CorrelationExtensions.cs`
+- Modify: `src/FlashInterview.Api/FlashInterview.Api.csproj`
+- Modify: `src/FlashInterview.Web/FlashInterview.Web.csproj`
 - Modify: `src/FlashInterview.Api/Program.cs`
 - Modify: `src/FlashInterview.Web/Program.cs`
-- Test: `tests/FlashInterview.Tests/ApiSurfaceTests.cs`
-- Test: `tests/FlashInterview.Tests/AuthWebTests.cs`
+- Modify: `src/FlashInterview.Api/Dockerfile`
+- Modify: `src/FlashInterview.Web/Dockerfile`
+- Modify: `FlashInterview.slnx`
+- Test: `tests/FlashInterview.Tests/WebProjectArchitectureTests.cs`
 
-- [ ] **Step 1: Extract shared observability registration**
+- [x] **Step 1: Create a real shared Hosting project**
 
-Create extension methods that accept service name, OTLP endpoint, application name, and optional API-specific metric/trace setup:
+`FlashInterview.Hosting` is a normal class library project referenced by API and Web. API/Web no longer compile linked source files from a hidden shared module.
 
-```csharp
-public static class ObservabilityExtensions
-{
-    public static WebApplicationBuilder AddFlashInterviewSerilog(this WebApplicationBuilder builder, string applicationName) { ... }
+- [x] **Step 2: Extract shared observability registration**
 
-    public static WebApplicationBuilder AddFlashInterviewOpenTelemetry(
-        this WebApplicationBuilder builder,
-        string serviceName,
-        string? otlpEndpoint,
-        string applicationName,
-        Action<MeterProviderBuilder>? configureMetrics = null,
-        Action<TracerProviderBuilder>? configureTracing = null) { ... }
-}
-```
+`ObservabilityExtensions` centralizes Serilog setup, OpenTelemetry logging, metrics, tracing, and optional OTLP exporter behavior while preserving API-specific `MaskingMetrics` and EF tracing configuration.
 
-Preserve API-only EF tracing and `MaskingMetrics.MeterName`; preserve Web HTTP/runtime metrics and tracing.
+- [x] **Step 3: Extract correlation and request logging middleware**
 
-- [ ] **Step 2: Extract correlation middleware**
+`CorrelationExtensions` centralizes `X-Correlation-Id` / `X-Session-Id` validation, response echoing, logger scope enrichment, `LogContext` properties, and Serilog request logging.
 
-Create:
+- [x] **Step 4: Update entrypoints and Docker restore inputs**
 
-```csharp
-public static class CorrelationExtensions
-{
-    public static IApplicationBuilder UseFlashInterviewCorrelation(this WebApplication app) { ... }
-}
-```
+API and Web `Program.cs` call the Hosting extensions. Production Dockerfiles copy `FlashInterview.Hosting.csproj` before restore so `--no-restore` publish paths work.
 
-Move the duplicated `X-Correlation-Id` / `X-Session-Id` validation, response echo, logger scope, and `LogContext.PushProperty` logic into the extension. Preserve allowed characters, max length 64, and fallback behavior.
+- [x] **Step 5: Guard the Web boundary**
 
-- [ ] **Step 3: Update both entrypoints**
+`WebProjectArchitectureTests` allows Web to reference only Application and Hosting, scans Web/Hosting source for forbidden database/infrastructure usage, and checks the resolved Web package graph for EF/SqlClient/Infrastructure packages.
 
-Replace duplicated setup in `Program.cs` files with calls to the new extensions. Keep API/Web behavior unchanged:
-
-```csharp
-builder.AddFlashInterviewSerilog("FlashInterview.Api");
-builder.AddFlashInterviewOpenTelemetry(apiServiceName, apiOtlpEndpoint, "FlashInterview.Api", ...);
-app.UseFlashInterviewCorrelation();
-```
-
-and equivalent Web calls.
-
-- [ ] **Step 4: Verify and commit**
+- [x] **Step 6: Verify**
 
 Run:
 
 ```bash
-dotnet test FlashInterview.slnx --filter "ApiSurfaceTests|AuthWebTests"
-dotnet test FlashInterview.slnx
-git add src/FlashInterview.Api/Hosting src/FlashInterview.Api/Program.cs src/FlashInterview.Web/Program.cs
-git commit -m "refactor: share hosting observability setup"
+dotnet restore FlashInterview.slnx
+dotnet build FlashInterview.slnx --no-restore
+dotnet test FlashInterview.slnx --no-build
+dotnet test FlashInterview.slnx --filter WebProjectArchitectureTests
+docker build -f src/FlashInterview.Api/Dockerfile --target build -t flash-interview-api-final-check .
+docker build -f src/FlashInterview.Web/Dockerfile --target build -t flash-interview-web-final-check .
 ```
-
-Expected: all tests pass; correlation headers still sanitize and echo correctly.
 
 ---
 
@@ -327,17 +200,11 @@ Expected: all tests pass; correlation headers still sanitize and echo correctly.
 - Modify: `src/FlashInterview.Infrastructure/FlashInterview.Infrastructure.csproj`
 - Test: full solution
 
-- [ ] **Step 1: Remove unnecessary package reference**
+- [x] **Step 1: Remove unnecessary package reference**
 
-Remove:
+Removed the unused `Microsoft.Extensions.Hosting.Abstractions` package reference from Infrastructure.
 
-```xml
-<PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.7" />
-```
-
-from `src/FlashInterview.Infrastructure/FlashInterview.Infrastructure.csproj`.
-
-- [ ] **Step 2: Verify restore/build/test**
+- [x] **Step 2: Verify restore/build/test**
 
 Run:
 
@@ -347,24 +214,13 @@ dotnet build FlashInterview.slnx --no-restore
 dotnet test FlashInterview.slnx --no-build
 ```
 
-Expected: no `NU1510` warning for `Microsoft.Extensions.Hosting.Abstractions`; build and tests pass.
-
-- [ ] **Step 3: Commit**
-
-Run:
-
-```bash
-git add src/FlashInterview.Infrastructure/FlashInterview.Infrastructure.csproj
-git commit -m "chore: remove unnecessary hosting abstractions reference"
-```
-
-Expected: commit succeeds.
+Expected: build and tests pass with zero warnings.
 
 ---
 
 ## Self-Review
 
-- Spec coverage: all five architecture smells are mapped to tasks.
-- Placeholder scan: no task is left as future work; examples with ellipses describe moved existing logic and require behavior preservation through existing tests.
-- Type consistency: workflow/service interfaces match existing DTO and request types in `FlashInterview.Application`.
-- Scope control: Web stays database-free; API remains the composition root for Infrastructure; no database schema or API route changes are planned.
+- Spec coverage: the five architecture smells and follow-up review findings are mapped to current code locations.
+- Placeholder scan: no stale API-local auth/user workflow paths remain.
+- Type consistency: workflow contracts live in Application, Identity/EF implementations live in Infrastructure, hosting helpers live in `FlashInterview.Hosting`.
+- Scope control: Web stays database-free; API remains the composition root; Infrastructure owns database/Identity access; no database schema or API route changes are required.
