@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/FlashInterview.Api/FlashInterview.Api.csproj" />
     <Project Path="src/FlashInterview.Application/FlashInterview.Application.csproj" />
+    <Project Path="src/FlashInterview.Hosting/FlashInterview.Hosting.csproj" />
     <Project Path="src/FlashInterview.Infrastructure/FlashInterview.Infrastructure.csproj" />
     <Project Path="src/FlashInterview.Web/FlashInterview.Web.csproj" />
   </Folder>

@@ -1,11 +1,8 @@
 using FlashInterview.Api.Security;
 using FlashInterview.Application.Auth;
-using FlashInterview.Infrastructure.Auth;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Swashbuckle.AspNetCore.Annotations;
-using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 
 namespace FlashInterview.Api.Controllers;
@@ -13,12 +10,8 @@ namespace FlashInterview.Api.Controllers;
 [ApiController]
 [Route("api/auth")]
 [Authorize(Policy = AuthorizationPolicies.AdminApiKey)]
-public sealed class AuthController(
-    UserManager<FlashInterviewUser> userManager,
-    SignInManager<FlashInterviewUser> signInManager) : ControllerBase
+public sealed class AuthController(IAuthWorkflow authWorkflow) : ControllerBase
 {
-    private const string GoogleProvider = "Google";
-
     [HttpPost("login")]
     [SwaggerOperation(Summary = "Validate local credentials", Description = "Validates local username/password credentials for the MVC web frontend.")]
     [SwaggerResponse(StatusCodes.Status200OK, "The authenticated user profile.", typeof(AuthenticatedUserDto))]
@@ -34,34 +27,13 @@ public sealed class AuthController(
             return BadRequest();
         }
 
-        if (!TryValidateRequest(request))
+        if (!ModelState.TryAddDataAnnotationErrors(request))
         {
             return ValidationProblem(ModelState);
         }
 
-        var email = request.Email.Trim();
-        var user = await userManager.FindByEmailAsync(email);
-        if (user is null)
-        {
-            return Unauthorized();
-        }
-
-        var signInResult = await signInManager.CheckPasswordSignInAsync(
-            user,
-            request.Password,
-            lockoutOnFailure: true);
-
-        if (!signInResult.Succeeded)
-        {
-            return Unauthorized();
-        }
-
-        var roles = await userManager.GetRolesAsync(user);
-        return Ok(new AuthenticatedUserDto(
-            user.Id,
-            user.Email ?? email,
-            user.DisplayName,
-            roles.ToArray()));
+        var result = await authWorkflow.LoginAsync(request, cancellationToken);
+        return MapWorkflowResult(result);
     }
 
     [HttpPost("external-login/sign-in")]
@@ -79,102 +51,13 @@ public sealed class AuthController(
             return BadRequest();
         }
 
-        if (!TryValidateRequest(request))
+        if (!ModelState.TryAddDataAnnotationErrors(request))
         {
             return ValidationProblem(ModelState);
         }
 
-        if (!request.EmailVerified)
-        {
-            ModelState.AddModelError(nameof(request.EmailVerified), "The external email address must be verified.");
-            return ValidationProblem(ModelState);
-        }
-
-        var provider = request.Provider.Trim();
-        if (!IsAllowedExternalLoginProvider(provider))
-        {
-            ModelState.AddModelError(nameof(request.Provider), "Only Google external logins are supported.");
-            return ValidationProblem(ModelState);
-        }
-
-        var providerKey = request.ProviderKey.Trim();
-        var user = await userManager.FindByLoginAsync(provider, providerKey);
-        if (user is not null)
-        {
-            return Ok(await CreateAuthenticatedUserAsync(user));
-        }
-
-        var email = request.Email.Trim();
-        user = await userManager.FindByEmailAsync(email);
-        if (user is null)
-        {
-            user = new FlashInterviewUser
-            {
-                UserName = email,
-                Email = email,
-                EmailConfirmed = true,
-                DisplayName = string.IsNullOrWhiteSpace(request.DisplayName) ? null : request.DisplayName.Trim(),
-                CreatedAt = DateTimeOffset.UtcNow,
-                UpdatedAt = DateTimeOffset.UtcNow
-            };
-
-            var createResult = await userManager.CreateAsync(user);
-            if (!createResult.Succeeded)
-            {
-                foreach (var error in createResult.Errors)
-                {
-                    ModelState.AddModelError(string.Empty, error.Description);
-                }
-
-                return ValidationProblem(ModelState);
-            }
-        }
-        else if (!user.EmailConfirmed)
-        {
-            user.EmailConfirmed = true;
-            user.UpdatedAt = DateTimeOffset.UtcNow;
-            var updateResult = await userManager.UpdateAsync(user);
-            if (!updateResult.Succeeded)
-            {
-                foreach (var error in updateResult.Errors)
-                {
-                    ModelState.AddModelError(string.Empty, error.Description);
-                }
-
-                return ValidationProblem(ModelState);
-            }
-        }
-
-        var linkResult = await userManager.AddLoginAsync(
-            user,
-            new UserLoginInfo(provider, providerKey, provider));
-        if (!linkResult.Succeeded)
-        {
-            foreach (var error in linkResult.Errors)
-            {
-                ModelState.AddModelError(string.Empty, error.Description);
-            }
-
-            return ValidationProblem(ModelState);
-        }
-
-        if (string.IsNullOrWhiteSpace(user.DisplayName) && !string.IsNullOrWhiteSpace(request.DisplayName))
-        {
-            user.DisplayName = request.DisplayName.Trim();
-            user.UpdatedAt = DateTimeOffset.UtcNow;
-            var updateResult = await userManager.UpdateAsync(user);
-            if (!updateResult.Succeeded)
-            {
-                foreach (var error in updateResult.Errors)
-                {
-                    ModelState.AddModelError(string.Empty, error.Description);
-                }
-
-                return ValidationProblem(ModelState);
-            }
-        }
-
-        return Ok(await CreateAuthenticatedUserAsync(user));
+        var result = await authWorkflow.ExternalSignInAsync(request, cancellationToken);
+        return MapWorkflowResult(result);
     }
 
     [HttpPost("external/sign-in")]
@@ -184,11 +67,6 @@ public sealed class AuthController(
         CancellationToken cancellationToken)
     {
         return ExternalSignIn(requestBody, cancellationToken);
-    }
-
-    private static bool IsAllowedExternalLoginProvider(string provider)
-    {
-        return string.Equals(provider, GoogleProvider, StringComparison.Ordinal);
     }
 
     private LoginRequest? ReadLoginRequest(JsonElement requestBody)
@@ -208,38 +86,14 @@ public sealed class AuthController(
         }
     }
 
-    private bool TryValidateRequest<TRequest>(TRequest request)
-        where TRequest : notnull
+    private ActionResult<AuthenticatedUserDto> MapWorkflowResult(AuthWorkflowResult result)
     {
-        var validationResults = new List<ValidationResult>();
-        var context = new ValidationContext(request);
-        if (Validator.TryValidateObject(request, context, validationResults, validateAllProperties: true))
+        return result.Status switch
         {
-            return true;
-        }
-
-        foreach (var validationResult in validationResults)
-        {
-            var memberNames = validationResult.MemberNames.Any()
-                ? validationResult.MemberNames
-                : [string.Empty];
-
-            foreach (var memberName in memberNames)
-            {
-                ModelState.AddModelError(memberName, validationResult.ErrorMessage ?? "The request is invalid.");
-            }
-        }
-
-        return false;
-    }
-
-    private async Task<AuthenticatedUserDto> CreateAuthenticatedUserAsync(FlashInterviewUser user)
-    {
-        var roles = await userManager.GetRolesAsync(user);
-        return new AuthenticatedUserDto(
-            user.Id,
-            user.Email ?? user.UserName ?? "",
-            user.DisplayName,
-            roles.ToArray());
+            AuthWorkflowStatus.Succeeded => Ok(result.User ?? throw new InvalidOperationException("Successful auth workflow result did not include a user.")),
+            AuthWorkflowStatus.Unauthorized => Unauthorized(),
+            AuthWorkflowStatus.ValidationFailed => ValidationProblem(ModelState.AddWorkflowValidationErrors(result.ValidationErrors)),
+            _ => throw new InvalidOperationException($"Unsupported auth workflow status '{result.Status}'.")
+        };
     }
 }

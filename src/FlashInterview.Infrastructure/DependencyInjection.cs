@@ -1,3 +1,4 @@
+using FlashInterview.Application.Auth;
 using FlashInterview.Application.SensitiveWords;
 using FlashInterview.Infrastructure.Auth;
 using FlashInterview.Infrastructure.SensitiveWords;
@@ -38,6 +39,8 @@ public static class DependencyInjection
 
         services.Configure<InitialSuperAdminOptions>(
             configuration.GetSection(InitialSuperAdminOptions.SectionName));
+        services.AddScoped<IAuthWorkflow, AuthWorkflow>();
+        services.AddScoped<IUserManagementWorkflow, UserManagementWorkflow>();
         services.AddScoped<ISensitiveWordRepository, SqlSensitiveWordRepository>();
         services.AddScoped<SensitiveWordSeeder>();
         services.AddHostedService<DatabaseBootstrapper>();
